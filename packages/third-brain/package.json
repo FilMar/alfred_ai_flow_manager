@@ -1,0 +1,27 @@
+{
+  "name": "pi-third-brain",
+  "version": "0.1.0",
+  "description": "Third brain — local RAG memory for pi using Qdrant and local embeddings",
+  "keywords": ["pi-package"],
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": { ".": "./dist/index.js" },
+  "files": ["dist/", "skills/"],
+  "pi": {
+    "extensions": ["./dist/index.js"],
+    "skills": ["./skills"]
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typescript": "^5.9.3"
+  }
+}
