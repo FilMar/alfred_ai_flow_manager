@@ -1,0 +1,17 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # HTTP / REST API
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_storage:/qdrant/storage:z
+    environment:
+      # API key opzionale — rimuovi se non serve autenticazione
+      # QDRANT__SERVICE__API_KEY: "cambia_questa_chiave"
+      QDRANT__LOG_LEVEL: INFO
+
+volumes:
+  qdrant_storage:

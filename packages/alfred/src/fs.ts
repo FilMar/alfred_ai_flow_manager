@@ -20,7 +20,7 @@ export async function saveProject(projectRoot: string, project: AlfredProject): 
 }
 
 export async function loadTeam(projectRoot: string, teamName: string): Promise<Team> {
-  const file = path.join(alfredDir(projectRoot), "teams", teamName, "manifest.json");
+  const file = path.join(alfredDir(projectRoot), "teams", sanitizeSegment(teamName), "manifest.json");
   return JSON.parse(await fs.readFile(file, "utf-8")) as Team;
 }
 
@@ -40,15 +40,32 @@ export async function listTeams(projectRoot: string): Promise<string[]> {
   }
 }
 
-export function formatThread(debate: Debate): string {
+/**
+ * Sanitizza un segmento di path: rimuove caratteri che permetterebbero traversal.
+ * Usato per team name e debate id prima di costruire path su disco.
+ */
+function sanitizeSegment(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_\-.]/g, "_");
+}
+
+export function formatThread(debate: Debate, truncateTimestamp = false): string {
   return debate.thread
     .filter((e) => e.content)
-    .map((e) => `## ${e.author} — ${e.timestamp}\n\n${e.content}`)
+    .map((e) => {
+      const ts = truncateTimestamp ? e.timestamp.slice(0, 16) : e.timestamp;
+      return `## ${e.author} — ${ts}\n\n${e.content}`;
+    })
     .join("\n\n---\n\n");
 }
 
 export async function saveDebate(projectRoot: string, debate: Debate): Promise<void> {
-  const dir = path.join(alfredDir(projectRoot), "teams", debate.team, "debates", debate.id);
+  const dir = path.join(
+    alfredDir(projectRoot),
+    "teams",
+    sanitizeSegment(debate.team),
+    "debates",
+    sanitizeSegment(debate.id),
+  );
   await fs.mkdir(dir, { recursive: true });
 
   const header = `# Debate: ${debate.id}\n\n**Task:** ${debate.task}\n\n---\n\n`;
@@ -66,6 +83,6 @@ export async function saveDebate(projectRoot: string, debate: Debate): Promise<v
 }
 
 export async function loadDebate(projectRoot: string, teamName: string, debateId: string): Promise<Debate> {
-  const file = path.join(alfredDir(projectRoot), "teams", teamName, "debates", debateId, "debate.json");
+  const file = path.join(alfredDir(projectRoot), "teams", sanitizeSegment(teamName), "debates", sanitizeSegment(debateId), "debate.json");
   return JSON.parse(await fs.readFile(file, "utf-8")) as Debate;
 }

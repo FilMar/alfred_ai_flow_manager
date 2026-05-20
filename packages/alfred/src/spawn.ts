@@ -4,7 +4,18 @@ import * as path from "node:path";
 import { spawn } from "node:child_process";
 import type { TeamMember, AgentTurnResult } from "./types.js";
 
+/**
+ * Limite in caratteri per il task inline via argv.
+ * Se superato, il task viene scritto su file temporaneo e passato via @file.
+ * 8000 è conservativo: ARG_MAX su Linux è ~128KB ma lasciamo margine per env vars e args.
+ */
 const TASK_ARG_LIMIT = 8000;
+
+/**
+ * Limite in byte per stdout/stderr catturati.
+ * Protegge da subprocess che generano output fuori controllo.
+ */
+const MAX_OUTPUT = 1_000_000; // 1MB
 
 function piCommand(): string {
   return process.platform === "win32" ? "pi.cmd" : "pi";
@@ -52,14 +63,31 @@ export async function runAgentTurn(
         stdio: ["ignore", "pipe", "pipe"],
         env: {
           ...process.env,
+          // Segnala al subprocess che è un sottoagente — disabilita ereditarietà della sessione parent
           PI_SUBAGENT_CHILD: "1",
+          // Impedisce iniezione automatica del project context — il task è esplicito
           PI_SUBAGENT_INHERIT_PROJECT_CONTEXT: "0",
+          // Skill controllate via --no-skills; questa è una valvola di sicurezza ridondante
           PI_SUBAGENT_INHERIT_SKILLS: "0",
         },
       });
 
-      child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
-      child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+      child.stdout.on("data", (chunk: Buffer) => {
+        if (stdout.length < MAX_OUTPUT) {
+          stdout += chunk.toString();
+          if (stdout.length >= MAX_OUTPUT) {
+            stdout = stdout.slice(0, MAX_OUTPUT) + "\n\n[... output truncated after 1MB]";
+          }
+        }
+      });
+      child.stderr.on("data", (chunk: Buffer) => {
+        if (stderr.length < MAX_OUTPUT) {
+          stderr += chunk.toString();
+          if (stderr.length >= MAX_OUTPUT) {
+            stderr = stderr.slice(0, MAX_OUTPUT) + "\n\n[... output truncated after 1MB]";
+          }
+        }
+      });
 
       const settle = (fn: () => void) => {
         if (!settled) { settled = true; fn(); }

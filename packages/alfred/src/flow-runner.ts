@@ -23,7 +23,15 @@ async function runMember(
   threadSnapshot: string,
   signal?: AbortSignal,
 ): Promise<string> {
-  const hat = await loadHat(member.hat);
+  let hat: string;
+  try {
+    hat = await loadHat(member.hat);
+  } catch (err) {
+    throw new Error(
+      `Hat '${member.hat}' not found for member '${member.id}' (check hats/ directory). ` +
+      `${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   const systemPrompt = buildSystemPrompt(member.role, member.personality, hat, threadSnapshot);
   const result = await runAgentTurn(member, systemPrompt, debate.task, signal);
   return result.output;
@@ -43,9 +51,8 @@ async function runStep(
   }
 
   if (Array.isArray(step)) {
-    // Parallel: all members see the same thread snapshot, results appended in order
     const snapshot = formatThread(debate);
-    const results = await Promise.all(
+    const settled = await Promise.allSettled(
       step.map(async (s) => {
         if (typeof s !== "string") throw new Error("Nested parallel groups are not supported");
         const member = getMember(s, members);
@@ -53,8 +60,13 @@ async function runStep(
         return { id: member.id, output };
       }),
     );
-    for (const r of results) {
-      debate.thread.push({ author: r.id, timestamp: now(), content: r.output });
+    for (const result of settled) {
+      if (result.status === "fulfilled") {
+        debate.thread.push({ author: result.value.id, timestamp: now(), content: result.value.output });
+      } else {
+        const msg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        debate.thread.push({ author: "alfred", timestamp: now(), content: `[Parallel step failed: ${msg}]` });
+      }
     }
     return;
   }

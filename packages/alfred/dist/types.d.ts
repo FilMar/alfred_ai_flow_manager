@@ -1,5 +1,7 @@
-export type HatId = "white-core" | "red-core" | "black-core" | "yellow-core" | "green-core" | "blue-core";
-export type ToolId = "read" | "write" | "edit" | "bash" | "grep" | "find" | "web_search" | "web_fetch";
+export declare const HAT_IDS: readonly ["white-core", "red-core", "black-core", "yellow-core", "green-core", "blue-core"];
+export type HatId = (typeof HAT_IDS)[number];
+export declare const TOOL_IDS: readonly ["read", "write", "edit", "bash", "grep", "find", "web_search", "web_fetch"];
+export type ToolId = (typeof TOOL_IDS)[number];
 export interface TeamMember {
     /** Unique identifier within the team, used for @addressing */
     id: string;
@@ -14,18 +16,15 @@ export interface TeamMember {
     /** Minimal set of tools this member may call */
     tools: ToolId[];
     /**
-     * pi skill names this member may invoke.
-     * @todo Attualmente ignorato: il subprocess gira sempre con --no-skills.
-     *       Implementazione futura: risolvere ogni nome al path del file skill
-     *       e passarlo via --skill <path>.
+     * Skill che il membro può invocare.
+     * @todo Supporto futuro: resolver da nome a path file, passare via --skill <path>.
      */
-    skills: string[];
+    skills?: string[];
     /**
-     * Hard cap sul numero di tool call per turno.
-     * @todo Il CLI di pi non espone un flag --max-tool-calls.
-     *       Riservato per implementazione futura (es. istruzione nel system prompt).
+     * Cap hard sul numero di tool call per turno.
+     * @todo Supporto futuro: iniettare come istruzione nel system prompt del subprocess.
      */
-    maxToolCalls: number;
+    maxToolCalls?: number;
 }
 export interface Team {
     name: string;
@@ -57,7 +56,7 @@ export interface RoundtableNode {
     roundtable: string[];
     rounds?: number;
 }
-export type FlowStep = string | FlowStep[] | RoundtableNode;
+export type FlowStep = string | string[] | RoundtableNode;
 export type Flow = FlowStep[];
 export interface DebateEntry {
     /** Member id or "alfred" for the orchestrator */
