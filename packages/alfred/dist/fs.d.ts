@@ -5,6 +5,7 @@ export declare function saveProject(projectRoot: string, project: AlfredProject)
 export declare function loadTeam(projectRoot: string, teamName: string): Promise<Team>;
 export declare function saveTeam(projectRoot: string, team: Team): Promise<void>;
 export declare function listTeams(projectRoot: string): Promise<string[]>;
+export declare function nextDebateSequence(projectRoot: string, teamName: string): Promise<number>;
 export declare function formatThread(debate: Debate, truncateTimestamp?: boolean): string;
 export declare function saveDebate(projectRoot: string, debate: Debate): Promise<void>;
 export declare function loadDebate(projectRoot: string, teamName: string, debateId: string): Promise<Debate>;

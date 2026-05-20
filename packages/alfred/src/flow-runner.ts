@@ -33,7 +33,7 @@ async function runMember(
     );
   }
   const systemPrompt = buildSystemPrompt(member.role, member.personality, hat, threadSnapshot);
-  const result = await runAgentTurn(member, systemPrompt, debate.task, signal);
+  const result = await runAgentTurn(member, systemPrompt, debate.request.prompt, signal);
   return result.output;
 }
 

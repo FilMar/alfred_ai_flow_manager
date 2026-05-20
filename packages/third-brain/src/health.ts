@@ -10,6 +10,10 @@ export interface HealthStatus {
   model: boolean;
 }
 
+const HEALTH_CHECK_TTL_MS = 60_000;
+let cachedHealth: HealthStatus | null = null;
+let lastHealthCheckTime = 0;
+
 // ─── Check ───────────────────────────────────────────────────────────────────
 
 export async function checkHealth(): Promise<HealthStatus> {
@@ -36,6 +40,35 @@ export async function checkHealth(): Promise<HealthStatus> {
   }
 
   return status;
+}
+
+export async function getHealthCached(): Promise<HealthStatus> {
+  const now = Date.now();
+  if (cachedHealth && now - lastHealthCheckTime < HEALTH_CHECK_TTL_MS) {
+    return cachedHealth;
+  }
+
+  cachedHealth = await checkHealth();
+  lastHealthCheckTime = now;
+  return cachedHealth;
+}
+
+export function missingServices(status: HealthStatus, options?: { needsEmbedding?: boolean }): string[] {
+  const needsEmbedding = options?.needsEmbedding ?? true;
+  return [
+    !status.qdrant ? "Qdrant" : null,
+    needsEmbedding && !status.ollama ? "Ollama" : null,
+    needsEmbedding && !status.model ? `modello ${EMBED_MODEL}` : null,
+  ].filter((value): value is string => value !== null);
+}
+
+export function fixCommands(status: HealthStatus, options?: { needsEmbedding?: boolean }): string[] {
+  const needsEmbedding = options?.needsEmbedding ?? true;
+  return [
+    !status.qdrant ? "docker run -p 6333:6333 qdrant/qdrant" : null,
+    needsEmbedding && !status.ollama ? "ollama serve" : null,
+    needsEmbedding && !status.model ? `ollama pull ${EMBED_MODEL}` : null,
+  ].filter((value): value is string => value !== null);
 }
 
 // ─── Warning ─────────────────────────────────────────────────────────────────

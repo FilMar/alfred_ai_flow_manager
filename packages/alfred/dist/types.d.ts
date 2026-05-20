@@ -1,5 +1,9 @@
 export declare const HAT_IDS: readonly ["white-core", "red-core", "black-core", "yellow-core", "green-core", "blue-core"];
 export type HatId = (typeof HAT_IDS)[number];
+export type TeamName = string & {
+    readonly __brand: "TeamName";
+};
+export declare function validateTeamName(name: string): TeamName;
 export declare const TOOL_IDS: readonly ["read", "write", "edit", "bash", "grep", "find", "web_search", "web_fetch"];
 export type ToolId = (typeof TOOL_IDS)[number];
 export interface TeamMember {
@@ -27,15 +31,13 @@ export interface TeamMember {
     maxToolCalls?: number;
 }
 export interface Team {
-    name: string;
+    name: TeamName;
     description: string;
     members: TeamMember[];
 }
 export interface AlfredProject {
     name: string;
     description: string;
-    /** Names of active teams — each maps to teams/<name>/manifest.json */
-    teams: string[];
     created: string;
 }
 /**
@@ -66,15 +68,24 @@ export interface DebateEntry {
     /** Present in memory during execution, stripped from debate.json (transcript lives in thread.md) */
     content?: string;
 }
+export interface DebateRequest {
+    /** Short slug-like title derived from the original prompt */
+    title: string;
+    /** Original task as given to Alfred */
+    prompt: string;
+}
 export interface Debate {
-    /** Slug used as directory name, e.g. "2026-05-19_feature-auth" */
+    /** Slug used as directory name, e.g. "0001_feature-auth" */
     id: string;
+    /** Per-team incremental sequence */
+    sequence: number;
     /** Name of the team involved */
     team: string;
     flow: Flow;
-    /** Original task as given to Alfred */
-    task: string;
+    request: DebateRequest;
     thread: DebateEntry[];
+    /** Timestamp ISO impostato quando il debate viene creato. */
+    createdAt: string;
     /** Sintesi del debate prodotta dall'orchestratore dopo la lettura del thread. Non scritta dall'engine. */
     summary?: string;
     /** Timestamp ISO impostato quando il debate viene finalizzato. Non ancora scritto dall'engine. */

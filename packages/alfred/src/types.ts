@@ -3,6 +3,19 @@
 export const HAT_IDS = ["white-core", "red-core", "black-core", "yellow-core", "green-core", "blue-core"] as const;
 export type HatId = (typeof HAT_IDS)[number];
 
+const VALID_TEAM_NAME_REGEX = /^[a-z0-9_.-]+$/;
+
+export type TeamName = string & { readonly __brand: "TeamName" };
+
+export function validateTeamName(name: string): TeamName {
+  if (typeof name !== "string" || !VALID_TEAM_NAME_REGEX.test(name)) {
+    throw new Error(
+      `Invalid team name: "${name}". Use lowercase letters, digits, underscore, dot, or dash.`,
+    );
+  }
+  return name as TeamName;
+}
+
 // ─── Tools ───────────────────────────────────────────────────────────────────
 
 export const TOOL_IDS = ["read", "write", "edit", "bash", "grep", "find", "web_search", "web_fetch"] as const;
@@ -38,7 +51,7 @@ export interface TeamMember {
 // ─── Team ────────────────────────────────────────────────────────────────────
 
 export interface Team {
-  name: string;
+  name: TeamName;
   description: string;
   members: TeamMember[];
 }
@@ -48,8 +61,6 @@ export interface Team {
 export interface AlfredProject {
   name: string;
   description: string;
-  /** Names of active teams — each maps to teams/<name>/manifest.json */
-  teams: string[];
   created: string; // ISO date
 }
 
@@ -89,15 +100,25 @@ export interface DebateEntry {
   content?: string;
 }
 
+export interface DebateRequest {
+  /** Short slug-like title derived from the original prompt */
+  title: string;
+  /** Original task as given to Alfred */
+  prompt: string;
+}
+
 export interface Debate {
-  /** Slug used as directory name, e.g. "2026-05-19_feature-auth" */
+  /** Slug used as directory name, e.g. "0001_feature-auth" */
   id: string;
+  /** Per-team incremental sequence */
+  sequence: number;
   /** Name of the team involved */
   team: string;
   flow: Flow;
-  /** Original task as given to Alfred */
-  task: string;
+  request: DebateRequest;
   thread: DebateEntry[];
+  /** Timestamp ISO impostato quando il debate viene creato. */
+  createdAt: string;
   /** Sintesi del debate prodotta dall'orchestratore dopo la lettura del thread. Non scritta dall'engine. */
   summary?: string;
   /** Timestamp ISO impostato quando il debate viene finalizzato. Non ancora scritto dall'engine. */

@@ -5,7 +5,9 @@ export function alfredDir(projectRoot) {
 }
 export async function loadProject(projectRoot) {
     const file = path.join(alfredDir(projectRoot), "alfred_project.json");
-    return JSON.parse(await fs.readFile(file, "utf-8"));
+    const data = JSON.parse(await fs.readFile(file, "utf-8"));
+    const { teams: _ignoredTeams, ...project } = data;
+    return project;
 }
 export async function saveProject(projectRoot, project) {
     await fs.mkdir(alfredDir(projectRoot), { recursive: true });
@@ -16,7 +18,7 @@ export async function loadTeam(projectRoot, teamName) {
     return JSON.parse(await fs.readFile(file, "utf-8"));
 }
 export async function saveTeam(projectRoot, team) {
-    const dir = path.join(alfredDir(projectRoot), "teams", team.name);
+    const dir = path.join(alfredDir(projectRoot), "teams", sanitizeSegment(team.name));
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, "manifest.json"), JSON.stringify(team, null, 2));
 }
@@ -28,6 +30,23 @@ export async function listTeams(projectRoot) {
     }
     catch {
         return [];
+    }
+}
+export async function nextDebateSequence(projectRoot, teamName) {
+    const debatesDir = path.join(alfredDir(projectRoot), "teams", sanitizeSegment(teamName), "debates");
+    try {
+        const entries = await fs.readdir(debatesDir, { withFileTypes: true });
+        const maxSequence = entries
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => {
+            const match = entry.name.match(/^(\d+)_/);
+            return match ? Number.parseInt(match[1] ?? "0", 10) : 0;
+        })
+            .reduce((max, value) => Math.max(max, value), 0);
+        return maxSequence + 1;
+    }
+    catch {
+        return 1;
     }
 }
 /**
@@ -49,18 +68,58 @@ export function formatThread(debate, truncateTimestamp = false) {
 export async function saveDebate(projectRoot, debate) {
     const dir = path.join(alfredDir(projectRoot), "teams", sanitizeSegment(debate.team), "debates", sanitizeSegment(debate.id));
     await fs.mkdir(dir, { recursive: true });
-    const header = `# Debate: ${debate.id}\n\n**Task:** ${debate.task}\n\n---\n\n`;
+    const header = `# Debate: ${debate.id}\n\n**Request:** ${debate.request.prompt}\n\n---\n\n`;
     await fs.writeFile(path.join(dir, "thread.md"), header + formatThread(debate));
     if (debate.summary) {
         await fs.writeFile(path.join(dir, "summary.md"), debate.summary);
     }
     const meta = {
-        ...debate,
-        thread: debate.thread.map(({ author, timestamp }) => ({ author, timestamp })),
+        id: debate.id,
+        sequence: debate.sequence,
+        team: debate.team,
+        createdAt: debate.createdAt,
+        closedAt: debate.closedAt,
+        flow: debate.flow,
+        request: debate.request,
+        artifacts: {
+            thread: "thread.md",
+            ...(debate.summary ? { summary: "summary.md" } : {}),
+        },
+        stats: {
+            contributions: debate.thread.length,
+        },
     };
     await fs.writeFile(path.join(dir, "debate.json"), JSON.stringify(meta, null, 2));
 }
 export async function loadDebate(projectRoot, teamName, debateId) {
     const file = path.join(alfredDir(projectRoot), "teams", sanitizeSegment(teamName), "debates", sanitizeSegment(debateId), "debate.json");
-    return JSON.parse(await fs.readFile(file, "utf-8"));
+    const data = JSON.parse(await fs.readFile(file, "utf-8"));
+    if (data.request) {
+        return {
+            id: data.id ?? debateId,
+            sequence: data.sequence ?? 0,
+            team: data.team ?? teamName,
+            flow: data.flow ?? [],
+            request: data.request,
+            thread: [],
+            createdAt: data.createdAt ?? data.closedAt ?? new Date(0).toISOString(),
+            summary: data.summary,
+            closedAt: data.closedAt,
+        };
+    }
+    const legacyPrompt = data.task ?? "";
+    return {
+        id: data.id ?? debateId,
+        sequence: 0,
+        team: data.team ?? teamName,
+        flow: data.flow ?? [],
+        request: {
+            title: (data.id ?? debateId).replace(/^\d+_/, "") || "debate",
+            prompt: legacyPrompt,
+        },
+        thread: data.thread ?? [],
+        createdAt: data.thread?.[0]?.timestamp ?? data.closedAt ?? new Date(0).toISOString(),
+        summary: data.summary,
+        closedAt: data.closedAt,
+    };
 }

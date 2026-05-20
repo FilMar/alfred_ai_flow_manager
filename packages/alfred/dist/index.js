@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { Type } from "typebox";
-import { HAT_IDS, TOOL_IDS } from "./types.js";
-import { alfredDir, loadTeam, listTeams, saveDebate, saveProject, saveTeam, formatThread } from "./fs.js";
+import { HAT_IDS, TOOL_IDS, validateTeamName } from "./types.js";
+import { alfredDir, loadTeam, listTeams, nextDebateSequence, saveDebate, saveProject, saveTeam, formatThread } from "./fs.js";
 import { runFlow } from "./flow-runner.js";
 import { textResponse, errorResponse } from "./responses.js";
 // ─── Parametri comuni ────────────────────────────────────────────────────────
@@ -35,6 +35,13 @@ const TeamMemberSchema = Type.Object({
     skills: Type.Optional(Type.Array(Type.String())),
     maxToolCalls: Type.Optional(Type.Number()),
 });
+function slugifyDebateTitle(task) {
+    return task
+        .slice(0, 40)
+        .replace(/[^a-z0-9]+/gi, "-")
+        .toLowerCase()
+        .replace(/^-|-$/g, "") || "debate";
+}
 // ─── Extension ───────────────────────────────────────────────────────────────
 export default function registerAlfredExtension(pi) {
     // ─── alfred_init ───────────────────────────────────────────────────────────
@@ -56,7 +63,6 @@ export default function registerAlfredExtension(pi) {
             const project = {
                 name,
                 description,
-                teams: [],
                 created: new Date().toISOString().slice(0, 10),
             };
             await saveProject(projectRoot, project);
@@ -88,19 +94,30 @@ Each member requires:
         }),
         async execute(_id, params, _signal, _onUpdate, _ctx) {
             const { projectRoot, team } = params;
-            const teamDir = path.join(alfredDir(projectRoot), "teams", team.name);
+            let validatedTeam;
+            try {
+                validatedTeam = {
+                    ...team,
+                    name: validateTeamName(team.name),
+                };
+            }
+            catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                return errorResponse(message);
+            }
+            const teamDir = path.join(alfredDir(projectRoot), "teams", validatedTeam.name);
             if (existsSync(teamDir)) {
-                return errorResponse(`Team '${team.name}' already exists at ${teamDir}.`);
+                return errorResponse(`Team '${validatedTeam.name}' already exists at ${teamDir}.`);
             }
             const projectFile = path.join(alfredDir(projectRoot), "alfred_project.json");
             if (!existsSync(projectFile)) {
                 return errorResponse(`No Alfred project found at ${projectRoot}. Run alfred_init first.`);
             }
-            await saveTeam(projectRoot, team);
-            const members = team.members
+            await saveTeam(projectRoot, validatedTeam);
+            const members = validatedTeam.members
                 .map((m) => `  - ${m.id} (${m.hat}) — ${m.role}`)
                 .join("\n");
-            return textResponse(`Team '${team.name}' created with ${team.members.length} members:\n${members}`, { team });
+            return textResponse(`Team '${validatedTeam.name}' created with ${validatedTeam.members.length} members:\n${members}`, { team: validatedTeam });
         },
     });
     // ─── alfred_run ───────────────────────────────────────────────────────────
@@ -137,18 +154,20 @@ Example flows:
             catch {
                 return errorResponse(`Team '${teamName}' not found in ${projectRoot}/.alfred/teams/`);
             }
-            const slug = task
-                .slice(0, 40)
-                .replace(/[^a-z0-9]+/gi, "-")
-                .toLowerCase()
-                .replace(/^-|-$/g, "");
-            const debateId = `${new Date().toISOString().slice(0, 10)}_${slug || `debate-${Date.now()}`}`;
+            const title = slugifyDebateTitle(task);
+            const sequence = await nextDebateSequence(projectRoot, teamName);
+            const debateId = `${String(sequence).padStart(4, "0")}_${title}`;
             const debate = {
                 id: debateId,
+                sequence,
                 team: teamName,
                 flow,
-                task,
+                request: {
+                    title,
+                    prompt: task,
+                },
                 thread: [],
+                createdAt: new Date().toISOString(),
             };
             try {
                 await runFlow(flow, team.members, debate, signal);
@@ -158,7 +177,7 @@ Example flows:
                 let savedInfo = "";
                 try {
                     await saveDebate(projectRoot, debate);
-                    savedInfo = `\n\nPartial thread saved to .alfred/debates/${debateId}/`;
+                    savedInfo = `\n\nPartial thread saved to .alfred/teams/${teamName}/debates/${debateId}/`;
                 }
                 catch (saveErr) {
                     const saveMsg = saveErr instanceof Error ? saveErr.message : String(saveErr);
@@ -166,6 +185,7 @@ Example flows:
                 }
                 return errorResponse(`Flow failed: ${message}${savedInfo}`);
             }
+            debate.closedAt = new Date().toISOString();
             await saveDebate(projectRoot, debate);
             const threadText = formatThread(debate, true);
             const result = [

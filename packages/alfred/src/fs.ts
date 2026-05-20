@@ -8,7 +8,9 @@ export function alfredDir(projectRoot: string): string {
 
 export async function loadProject(projectRoot: string): Promise<AlfredProject> {
   const file = path.join(alfredDir(projectRoot), "alfred_project.json");
-  return JSON.parse(await fs.readFile(file, "utf-8")) as AlfredProject;
+  const data = JSON.parse(await fs.readFile(file, "utf-8")) as AlfredProject & { teams?: string[] };
+  const { teams: _ignoredTeams, ...project } = data;
+  return project;
 }
 
 export async function saveProject(projectRoot: string, project: AlfredProject): Promise<void> {
@@ -25,7 +27,7 @@ export async function loadTeam(projectRoot: string, teamName: string): Promise<T
 }
 
 export async function saveTeam(projectRoot: string, team: Team): Promise<void> {
-  const dir = path.join(alfredDir(projectRoot), "teams", team.name);
+  const dir = path.join(alfredDir(projectRoot), "teams", sanitizeSegment(team.name));
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, "manifest.json"), JSON.stringify(team, null, 2));
 }
@@ -37,6 +39,25 @@ export async function listTeams(projectRoot: string): Promise<string[]> {
     return entries.filter((e) => e.isDirectory()).map((e) => e.name);
   } catch {
     return [];
+  }
+}
+
+export async function nextDebateSequence(projectRoot: string, teamName: string): Promise<number> {
+  const debatesDir = path.join(alfredDir(projectRoot), "teams", sanitizeSegment(teamName), "debates");
+
+  try {
+    const entries = await fs.readdir(debatesDir, { withFileTypes: true });
+    const maxSequence = entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => {
+        const match = entry.name.match(/^(\d+)_/);
+        return match ? Number.parseInt(match[1] ?? "0", 10) : 0;
+      })
+      .reduce((max, value) => Math.max(max, value), 0);
+
+    return maxSequence + 1;
+  } catch {
+    return 1;
   }
 }
 
@@ -68,7 +89,7 @@ export async function saveDebate(projectRoot: string, debate: Debate): Promise<v
   );
   await fs.mkdir(dir, { recursive: true });
 
-  const header = `# Debate: ${debate.id}\n\n**Task:** ${debate.task}\n\n---\n\n`;
+  const header = `# Debate: ${debate.id}\n\n**Request:** ${debate.request.prompt}\n\n---\n\n`;
   await fs.writeFile(path.join(dir, "thread.md"), header + formatThread(debate));
 
   if (debate.summary) {
@@ -76,13 +97,58 @@ export async function saveDebate(projectRoot: string, debate: Debate): Promise<v
   }
 
   const meta = {
-    ...debate,
-    thread: debate.thread.map(({ author, timestamp }) => ({ author, timestamp })),
+    id: debate.id,
+    sequence: debate.sequence,
+    team: debate.team,
+    createdAt: debate.createdAt,
+    closedAt: debate.closedAt,
+    flow: debate.flow,
+    request: debate.request,
+    artifacts: {
+      thread: "thread.md",
+      ...(debate.summary ? { summary: "summary.md" } : {}),
+    },
+    stats: {
+      contributions: debate.thread.length,
+    },
   };
   await fs.writeFile(path.join(dir, "debate.json"), JSON.stringify(meta, null, 2));
 }
 
 export async function loadDebate(projectRoot: string, teamName: string, debateId: string): Promise<Debate> {
   const file = path.join(alfredDir(projectRoot), "teams", sanitizeSegment(teamName), "debates", sanitizeSegment(debateId), "debate.json");
-  return JSON.parse(await fs.readFile(file, "utf-8")) as Debate;
+  const data = JSON.parse(await fs.readFile(file, "utf-8")) as Partial<Debate> & {
+    task?: string;
+    request?: Debate["request"];
+  };
+
+  if (data.request) {
+    return {
+      id: data.id ?? debateId,
+      sequence: data.sequence ?? 0,
+      team: data.team ?? teamName,
+      flow: data.flow ?? [],
+      request: data.request,
+      thread: [],
+      createdAt: data.createdAt ?? data.closedAt ?? new Date(0).toISOString(),
+      summary: data.summary,
+      closedAt: data.closedAt,
+    };
+  }
+
+  const legacyPrompt = data.task ?? "";
+  return {
+    id: data.id ?? debateId,
+    sequence: 0,
+    team: data.team ?? teamName,
+    flow: data.flow ?? [],
+    request: {
+      title: (data.id ?? debateId).replace(/^\d+_/, "") || "debate",
+      prompt: legacyPrompt,
+    },
+    thread: data.thread ?? [],
+    createdAt: data.thread?.[0]?.timestamp ?? data.closedAt ?? new Date(0).toISOString(),
+    summary: data.summary,
+    closedAt: data.closedAt,
+  };
 }

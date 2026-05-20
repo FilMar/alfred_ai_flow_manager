@@ -1,13 +1,31 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Note, NoteInput, NoteUpdate, SearchOptions } from "./types.js";
-import { checkHealth, warnIfUnhealthy } from "./health.js";
+import { checkHealth, fixCommands, getHealthCached, missingServices, warnIfUnhealthy } from "./health.js";
 import { embed } from "./embed.js";
 import { ensureCollection, upsert, search, updateNote, randomNoteId, noteId } from "./qdrant.js";
 import { NoteStateSchema, NoteTypeSchema, RelazioneTypeSchema } from "./schemas.js";
 import { textResponse, errorResponse } from "./responses.js";
 
 export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
+
+  async function requireServices(options?: { needsEmbedding?: boolean }) {
+    const health = await getHealthCached();
+    const missing = missingServices(health, options);
+
+    if (missing.length === 0) {
+      return null;
+    }
+
+    const commands = fixCommands(health, options);
+    const commandsText = commands.length > 0
+      ? `\nComandi per il fix:\n${commands.map((command) => `  • ${command}`).join("\n")}`
+      : "";
+
+    return errorResponse(
+      `[third-brain] Servizi non disponibili: ${missing.join(", ")}.${commandsText}`,
+    );
+  }
 
   // ─── Healthcheck all'avvio ───────────────────────────────────────────────
   // Fire-and-forget: non blocca il caricamento dell'estensione.
@@ -34,6 +52,9 @@ export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
     }),
 
     async execute(_id, params, _signal, _onUpdate, _ctx) {
+      const unavailable = await requireServices({ needsEmbedding: true });
+      if (unavailable) return unavailable;
+
       const input: NoteInput = {
         why: params.why,
         what: params.what,
@@ -95,6 +116,9 @@ export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
     }),
 
     async execute(_id, params, _signal, _onUpdate, _ctx) {
+      const unavailable = await requireServices({ needsEmbedding: true });
+      if (unavailable) return unavailable;
+
       const options: SearchOptions = {
         stato: params.stato as SearchOptions["stato"],
         tags: params.tags,
@@ -150,6 +174,9 @@ export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
     }),
 
     async execute(_id, params, _signal, _onUpdate, _ctx) {
+      const unavailable = await requireServices({ needsEmbedding: false });
+      if (unavailable) return unavailable;
+
       const patch: NoteUpdate = {};
       if (params.stato) patch.stato = params.stato;
       if (params.correlati) patch.correlati = params.correlati;

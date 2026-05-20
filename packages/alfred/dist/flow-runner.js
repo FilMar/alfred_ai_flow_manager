@@ -23,7 +23,7 @@ async function runMember(member, debate, threadSnapshot, signal) {
             `${err instanceof Error ? err.message : String(err)}`);
     }
     const systemPrompt = buildSystemPrompt(member.role, member.personality, hat, threadSnapshot);
-    const result = await runAgentTurn(member, systemPrompt, debate.task, signal);
+    const result = await runAgentTurn(member, systemPrompt, debate.request.prompt, signal);
     return result.output;
 }
 async function runStep(step, members, debate, signal) {
