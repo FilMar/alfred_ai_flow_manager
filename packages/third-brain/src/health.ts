@@ -58,7 +58,7 @@ export function missingServices(status: HealthStatus, options?: { needsEmbedding
   return [
     !status.qdrant ? "Qdrant" : null,
     needsEmbedding && !status.ollama ? "Ollama" : null,
-    needsEmbedding && !status.model ? `modello ${EMBED_MODEL}` : null,
+    needsEmbedding && status.ollama && !status.model ? `modello ${EMBED_MODEL}` : null,
   ].filter((value): value is string => value !== null);
 }
 
@@ -67,7 +67,7 @@ export function fixCommands(status: HealthStatus, options?: { needsEmbedding?: b
   return [
     !status.qdrant ? "docker run -p 6333:6333 qdrant/qdrant" : null,
     needsEmbedding && !status.ollama ? "ollama serve" : null,
-    needsEmbedding && !status.model ? `ollama pull ${EMBED_MODEL}` : null,
+    needsEmbedding && status.ollama && !status.model ? `ollama pull ${EMBED_MODEL}` : null,
   ].filter((value): value is string => value !== null);
 }
 

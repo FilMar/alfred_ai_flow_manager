@@ -1,10 +1,11 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { Note, NoteInput, NoteUpdate, SearchOptions } from "./types.js";
+import type { Note, NoteUpdate, SearchOptions } from "./types.js";
+import { noteToText } from "./types.js";
 import { checkHealth, fixCommands, getHealthCached, missingServices, warnIfUnhealthy } from "./health.js";
 import { embed } from "./embed.js";
 import { ensureCollection, upsert, search, updateNote, randomNoteId, noteId } from "./qdrant.js";
-import { NoteStateSchema, NoteTypeSchema, RelazioneTypeSchema } from "./schemas.js";
+import { NoteTypeSchema, RelationTypeSchema } from "./schemas.js";
 import { textResponse, errorResponse } from "./responses.js";
 
 export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
@@ -42,47 +43,41 @@ export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
     label: "Third Brain Save",
     description:
       "Salva un'idea atomica nella memoria persistente. " +
-      "Genera automaticamente id, timestamp, stato iniziale ('fertile') e un correlato casuale seed. " +
+      "Genera automaticamente id, timestamp e un correlato casuale seed. " +
       "Il contenuto è immutabile dopo la creazione.",
     parameters: Type.Object({
-      why: Type.String({ description: "Contesto: perché questa idea è nata" }),
+      why: Type.String({ description: "Contesto: perché questa nota è nata" }),
       what: Type.String({ description: "Contenuto: l'idea atomica da ricordare" }),
       tags: Type.Optional(Type.Array(Type.String(), { description: "Etichette per filtro" })),
-      tipo: Type.Optional(NoteTypeSchema),
+      kind: Type.Optional(NoteTypeSchema),
+      source: Type.Optional(Type.String({ description: "URI o riferimento alla fonte originale" })),
     }),
 
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       const unavailable = await requireServices({ needsEmbedding: true });
       if (unavailable) return unavailable;
 
-      const input: NoteInput = {
-        why: params.why,
-        what: params.what,
-        tags: params.tags ?? [],
-      };
-
       const when = new Date().toISOString();
-      const id = noteId(input.what, when);
+      const id = noteId(params.what, when);
 
       // Correlato casuale seed
       const seedId = await randomNoteId();
-      const correlati = seedId
-        ? [{ id: seedId, perche: "correlato iniziale — connessione da esplorare" }]
-        : [];
 
       const note: Note = {
         id,
         when,
-        why: input.why,
-        what: input.what,
-        tags: input.tags,
-        tipo: (params.tipo ?? "nota") as Note["tipo"],
-        stato: "fertile",
-        correlati,
+        why: params.why,
+        what: params.what,
+        tags: params.tags ?? [],
+        kind: params.kind ?? "osservazione",
+        ...(params.source && { source: params.source }),
+        refs: seedId
+          ? [{ id: seedId, reason: "correlato iniziale — connessione da esplorare" }]
+          : [],
       };
 
       await ensureCollection();
-      const vector = await embed(`${note.why}\n\n${note.what}`);
+      const vector = await embed(noteToText(note));
       await upsert(note, vector);
 
       const seedMsg = seedId
@@ -100,19 +95,17 @@ export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
     label: "Third Brain Search",
     description:
       "Ricerca semantica nella memoria. " +
-      "Accetta una query in linguaggio naturale, la converte in vettore e trova le note più rilevanti. " +
-      "Per default esclude note con stato 'superata' e 'consolidata'.",
+      "Accetta una query in linguaggio naturale, la converte in vettore e trova le note più rilevanti.",
     parameters: Type.Object({
       query: Type.String({ description: "Query in linguaggio naturale" }),
-      stato: Type.Optional(
-        Type.Array(NoteStateSchema, { description: "Filtra per stato. Se omesso: solo note 'fertile'." }),
-      ),
       tags: Type.Optional(Type.Array(Type.String(), { description: "Filtra per tag (OR)" })),
-      tipo: Type.Optional(
+      kind: Type.Optional(
         Type.Array(NoteTypeSchema, { description: "Filtra per tipo semantico (OR)" }),
       ),
       limit: Type.Optional(Type.Number({ description: "Numero massimo di risultati. Default: 10." })),
-      depth: Type.Optional(Type.Number({ description: "Profondità traversal correlati. 0 = solo vettoriale. 1 = +correlati diretti (default). 2 = +correlati dei correlati." })),
+      depth: Type.Optional(Type.Number({ description: "Profondità traversal refs. 0 = solo vettoriale. 1 = +refs diretti (default). 2 = +refs dei refs." })),
+      hybrid: Type.Optional(Type.Boolean({ description: "Se true, usa hybrid retrieval (dense + sparse + RRF). Più lento ma migliore per query keyword-heavy." })),
+      evidence_only: Type.Optional(Type.Boolean({ description: "Se true, restringe la ricerca ai soli tipi evidence-oriented: osservazione, lemma." })),
     }),
 
     async execute(_id, params, _signal, _onUpdate, _ctx) {
@@ -120,11 +113,13 @@ export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
       if (unavailable) return unavailable;
 
       const options: SearchOptions = {
-        stato: params.stato as SearchOptions["stato"],
         tags: params.tags,
-        tipo: params.tipo as SearchOptions["tipo"],
+        kind: params.kind as SearchOptions["kind"],
         limit: params.limit,
         depth: params.depth,
+        hybrid: params.hybrid,
+        evidence_only: params.evidence_only,
+        query_text: params.query,
       };
 
       await ensureCollection();
@@ -138,10 +133,10 @@ export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
       const text = results
         .map(
           (r, i) =>
-            `${i + 1}. [${r.via === "search" ? r.score.toFixed(3) : "correlato"}] ${r.note.id} (${r.note.tipo})\n` +
+            `${i + 1}. [${r.via === "search" ? r.score.toFixed(3) : "correlato"}] ${r.note.id} (${r.note.kind})\n` +
             `   why: ${r.note.why}\n` +
             `   what: ${r.note.what}\n` +
-            `   stato: ${r.note.stato} | tags: ${r.note.tags.join(", ") || "—"}`,
+            `   tags: ${r.note.tags.join(", ") || "—"}`,
         )
         .join("\n\n");
 
@@ -155,20 +150,18 @@ export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
     name: "third_brain_update",
     label: "Third Brain Update",
     description:
-      "Aggiorna i campi mutabili di una nota esistente: 'stato' e/o 'correlati'. " +
-      "I correlati vengono sovrascritti integralmente — passa la lista completa. " +
-      "Il contenuto (why, what, tags) è immutabile.",
+      "Aggiorna i campi mutabili di una nota: `kind` e/o `refs`. I refs vengono sovrascritti integralmente.",
     parameters: Type.Object({
       id: Type.String({ description: "ID della nota da aggiornare" }),
-      stato: Type.Optional(NoteStateSchema),
-      correlati: Type.Optional(
+      kind: Type.Optional(NoteTypeSchema),
+      refs: Type.Optional(
         Type.Array(
           Type.Object({
             id: Type.String({ description: "ID della nota collegata" }),
-            perche: Type.String({ description: "Ragione esplicita del collegamento" }),
-            relazione: Type.Optional(RelazioneTypeSchema),
+            reason: Type.String({ description: "Ragione esplicita del collegamento" }),
+            relation: Type.Optional(RelationTypeSchema),
           }),
-          { description: "Lista completa dei correlati (sovrascrive quella esistente)" },
+          { description: "Lista completa dei refs (sovrascrive quella esistente)" },
         ),
       ),
     }),
@@ -178,8 +171,8 @@ export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
       if (unavailable) return unavailable;
 
       const patch: NoteUpdate = {};
-      if (params.stato) patch.stato = params.stato;
-      if (params.correlati) patch.correlati = params.correlati;
+      if (params.kind) patch.kind = params.kind;
+      if (params.refs) patch.refs = params.refs;
 
       if (Object.keys(patch).length === 0) {
         return errorResponse("Nessun campo da aggiornare specificato.");

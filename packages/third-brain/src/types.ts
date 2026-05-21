@@ -1,58 +1,64 @@
 // ─── Costanti enumerabili ─────────────────────────────────────────────────────
-// Single source of truth. I tipi TypeScript e gli schema TypeBox sono derivati
-// da questi array — aggiungere un valore qui è sufficiente.
 
-export const NOTE_STATES = ["fertile", "superata", "consolidata"] as const;
-export const NOTE_TYPES = ["nota", "credenza", "tensione", "deposito"] as const;
-export const RELAZIONE_TYPES = [
-  "contraddice",
-  "supporta",
-  "specializza",
-  "genera_tensione",
-  "precisa",
-  "nega",
+export const NOTE_TYPES = [
+  "osservazione",
+  "congettura",
+  "assioma",
+  "lemma",
+  "tensione",
+  "decisione",
 ] as const;
 
-/** Stati esclusi dalla ricerca per default quando nessun filtro è specificato. */
-export const DEFAULT_EXCLUDED_STATES: NoteState[] = ["superata", "consolidata"];
+export const RELATION_TYPES = [
+  "supporta",
+  "contraddice",
+  "nega",
+  "specializza",
+  "affina",
+  "crea_tensione",
+] as const;
 
 // ─── Tipi derivati ────────────────────────────────────────────────────────────
 
-export type NoteState = (typeof NOTE_STATES)[number];
-
-/**
- * Tipo semantico della nota — immutabile dopo la creazione.
- * - nota:     osservazione o idea generica (default)
- * - credenza: affermazione stabile di Alfred, con confidence e boundary
- * - tensione: conflitto esplicito tra due credenze
- * - deposito: apprendimento post-collaborazione su come ragiona l'utente
- */
 export type NoteType = (typeof NOTE_TYPES)[number];
 
 /**
- * Tipo di relazione logica tra note — sostituisce il testo libero per
- * relazioni strutturalmente significative.
+ * Tipo semantico della nota — immutabile dopo la creazione.
+ * - osservazione: fatto grezzo, empirico, non ancora interpretato
+ * - congettura:   pattern sospettato con fondamento, non ancora dimostrato
+ * - assioma:      principio assunto vero senza dimostrazione — base del ragionamento
+ * - lemma:        risultato intermedio che sostiene qualcos'altro
+ * - tensione:     conflitto esplicito tra due idee o assiomi
+ * - decisione:    scelta tracciabile con contesto e motivazione
  */
-export type RelazioneType = (typeof RELAZIONE_TYPES)[number];
 
-// ─── Correlato ───────────────────────────────────────────────────────────────
+export type RelationType = (typeof RELATION_TYPES)[number];
 
-export interface Correlato {
+/** Restituisce true per i tipi citabili e fondati su fonte. */
+export function isEvidence(kind: NoteType): boolean {
+  return kind === "osservazione" || kind === "lemma";
+}
+
+/** Testo canonico da vettorizzare per una nota: contesto + contenuto. */
+export function noteToText(note: Pick<Note, "why" | "what">): string {
+  return `${note.why}\n\n${note.what}`;
+}
+
+// ─── Link ─────────────────────────────────────────────────────────────────────
+
+export interface Link {
   /** ID della nota collegata */
   id: string;
   /** Ragione esplicita del collegamento */
-  perche: string;
-  /**
-   * Tipo di relazione logica — opzionale per compatibilità con note esistenti.
-   * Quando presente, rende la relazione queryabile strutturalmente.
-   */
-  relazione?: RelazioneType;
+  reason: string;
+  /** Tipo di relazione logica — opzionale per compatibilità con note esistenti. */
+  relation?: RelationType;
 }
 
 // ─── Note ────────────────────────────────────────────────────────────────────
 
 export interface Note {
-  /** SHA256(what + when) formattato come UUID — deterministico, immutabile */
+  /** SHA256(what + ":" + when) formattato come UUID — deterministico, immutabile */
   id: string;
   /** ISO 8601 — timestamp di creazione, immutabile */
   when: string;
@@ -62,48 +68,55 @@ export interface Note {
   what: string;
   /** Etichette per filtro — immutabili */
   tags: string[];
-  /**
-   * Tipo semantico — immutabile dopo la creazione.
-   * Default: "nota". Promozione = nuova nota con correlato evolved_from.
-   */
-  tipo: NoteType;
-  /** Ciclo di vita — mutabile */
-  stato: NoteState;
+  /** Tipo semantico — immutabile dopo la creazione. */
+  kind: NoteType;
+  /** URI della fonte originale — opzionale */
+  source?: string;
   /** Rete di connessioni — mutabile */
-  correlati: Correlato[];
+  refs: Link[];
 }
 
 // ─── Input ───────────────────────────────────────────────────────────────────
 
-/** Campi richiesti per creare una nota. id, when, stato, correlati sono generati automaticamente. */
-export type NoteInput = Pick<Note, "why" | "what" | "tags"> & { tipo?: NoteType };
+export type NoteInput = Pick<Note, "why" | "what" | "tags"> & { kind?: NoteType };
 
-/** Campi modificabili dopo la creazione. */
 export interface NoteUpdate {
-  stato?: NoteState;
-  correlati?: Correlato[];
+  kind?: NoteType;
+  refs?: Link[];
 }
 
 // ─── Search ──────────────────────────────────────────────────────────────────
 
 export interface SearchOptions {
-  /** Filtra per stato. Default: esclude "superata" e "consolidata". */
-  stato?: NoteState[];
   /** Filtra per tag (OR). */
   tags?: string[];
   /** Filtra per tipo semantico (OR). */
-  tipo?: NoteType[];
+  kind?: NoteType[];
   /** Numero massimo di risultati dal vettore. Default: 10. */
   limit?: number;
   /**
-   * Profondità di traversal dei correlati.
+   * Profondità di traversal dei refs.
    * 0 = solo ricerca vettoriale.
-   * 1 = vettoriale + 1 hop di correlati (default).
-   * 2 = vettoriale + correlati + correlati dei correlati.
+   * 1 = vettoriale + 1 hop di refs (default).
+   * 2 = vettoriale + refs + refs dei refs.
    */
   depth?: number;
+  /** Se true, restringe la ricerca ai soli tipi evidence-oriented (osservazione, lemma). */
+  evidence_only?: boolean;
+  /** Se true, usa hybrid retrieval (dense + sparse + RRF fusion via Query API). Default: false. */
+  hybrid?: boolean;
+  /** Testo della query originale. Richiesto se hybrid=true. */
+  query_text?: string;
+}
+
+export interface Citation {
+  note_id: string;
+  snippet: string;
+  score: number;
+  source?: string;
+  timestamp: string;
 }
 
 export type SearchResult =
-  | { note: Note; score: number; via: "search" }
+  | { note: Note; score: number; via: "search"; citation?: Citation }
   | { note: Note; score: null; via: "correlato" };

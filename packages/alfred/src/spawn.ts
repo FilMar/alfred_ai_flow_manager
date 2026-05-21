@@ -28,6 +28,7 @@ export async function runAgentTurn(
   signal?: AbortSignal,
 ): Promise<AgentTurnResult> {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "alfred-turn-"));
+  const startMs = Date.now();
 
   try {
     const promptFile = path.join(tempDir, "prompt.md");
@@ -103,12 +104,26 @@ export async function runAgentTurn(
       child.on("error", (err) => settle(() => reject(err)));
     });
 
+    const durationMs = Date.now() - startMs;
+
     if (exitCode !== 0) {
       const detail = stderr.trim() ? `\nstderr: ${stderr.trim()}` : "";
-      throw new Error(`[${member.id}] exited with code ${exitCode}${detail}`);
+      const errorMsg = `[${member.id}] exited with code ${exitCode}${detail}`;
+      return {
+        memberId: member.id,
+        output: stdout.trim(),
+        exitCode,
+        duration_ms: durationMs,
+        error: errorMsg,
+      };
     }
 
-    return { memberId: member.id, output: stdout.trim(), exitCode };
+    return {
+      memberId: member.id,
+      output: stdout.trim(),
+      exitCode,
+      duration_ms: durationMs,
+    };
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

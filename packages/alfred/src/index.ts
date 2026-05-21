@@ -2,9 +2,10 @@ import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { AlfredProject, Debate, Flow, Team } from "./types.js";
+import type { AlfredProject as AlfredProjectType, Debate, Flow, Team } from "./types.js";
 import { HAT_IDS, TOOL_IDS, validateTeamName } from "./types.js";
-import { alfredDir, loadTeam, listTeams, nextDebateSequence, saveDebate, saveProject, saveTeam, formatThread } from "./fs.js";
+import { AlfredProject } from "./AlfredProject.js";
+import { AlfredStorage } from "./AlfredStorage.js";
 import { runFlow } from "./flow-runner.js";
 import { textResponse, errorResponse } from "./responses.js";
 
@@ -70,20 +71,22 @@ export default function registerAlfredExtension(pi: ExtensionAPI): void {
 
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       const { projectRoot, name, description = "" } = params;
+      const project = new AlfredProject(projectRoot);
 
-      const projectFile = path.join(alfredDir(projectRoot), "alfred_project.json");
+      const projectFile = path.join(project.root, ".alfred", "alfred_project.json");
       if (existsSync(projectFile)) {
         return errorResponse(`Project already exists at ${projectFile}. Use alfred_teams to inspect it.`);
       }
 
-      const project: AlfredProject = {
+      const projectData: AlfredProjectType = {
         name,
         description,
         created: new Date().toISOString().slice(0, 10),
       };
 
-      await saveProject(projectRoot, project);
-      return textResponse(`Project '${name}' initialized at ${projectRoot}/.alfred/`, { project });
+      await project.storage.saveProject(projectData);
+      project.dispose();
+      return textResponse(`Project '${name}' initialized at ${projectRoot}/.alfred/`, { project: projectData });
     },
   });
 
@@ -115,6 +118,7 @@ Each member requires:
 
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       const { projectRoot, team } = params;
+      const project = new AlfredProject(projectRoot);
 
       let validatedTeam: Team;
       try {
@@ -124,25 +128,29 @@ Each member requires:
         } as Team;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        project.dispose();
         return errorResponse(message);
       }
 
-      const teamDir = path.join(alfredDir(projectRoot), "teams", validatedTeam.name);
+      const teamDir = path.join(project.root, ".alfred", "teams", validatedTeam.name);
       if (existsSync(teamDir)) {
+        project.dispose();
         return errorResponse(`Team '${validatedTeam.name}' already exists at ${teamDir}.`);
       }
 
-      const projectFile = path.join(alfredDir(projectRoot), "alfred_project.json");
+      const projectFile = path.join(project.root, ".alfred", "alfred_project.json");
       if (!existsSync(projectFile)) {
+        project.dispose();
         return errorResponse(`No Alfred project found at ${projectRoot}. Run alfred_init first.`);
       }
 
-      await saveTeam(projectRoot, validatedTeam);
+      await project.storage.saveTeam(validatedTeam);
 
       const members = validatedTeam.members
         .map((m) => `  - ${m.id} (${m.hat}) — ${m.role}`)
         .join("\n");
 
+      project.dispose();
       return textResponse(
         `Team '${validatedTeam.name}' created with ${validatedTeam.members.length} members:\n${members}`,
         { team: validatedTeam },
@@ -180,16 +188,18 @@ Example flows:
     async execute(_id, params, signal, _onUpdate, _ctx) {
       const { projectRoot, team: teamName, task } = params;
       const flow = params.flow as Flow;
+      const project = new AlfredProject(projectRoot);
 
       let team;
       try {
-        team = await loadTeam(projectRoot, teamName);
+        team = await project.storage.loadTeam(teamName);
       } catch {
+        project.dispose();
         return errorResponse(`Team '${teamName}' not found in ${projectRoot}/.alfred/teams/`);
       }
 
       const title = slugifyDebateTitle(task);
-      const sequence = await nextDebateSequence(projectRoot, teamName);
+      const sequence = project.database.getNextSequence(teamName);
       const debateId = `${String(sequence).padStart(4, "0")}_${title}`;
 
       const debate: Debate = {
@@ -201,29 +211,24 @@ Example flows:
           title,
           prompt: task,
         },
-        thread: [] as { author: string; timestamp: string; content: string }[],
+        thread: [],
         createdAt: new Date().toISOString(),
       };
 
       try {
-        await runFlow(flow, team.members, debate, signal);
+        project.database.createDebate(debate);
+        await runFlow(flow, team.members, debate, project.database, signal);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        let savedInfo = "";
-        try {
-          await saveDebate(projectRoot, debate);
-          savedInfo = `\n\nPartial thread saved to .alfred/teams/${teamName}/debates/${debateId}/`;
-        } catch (saveErr) {
-          const saveMsg = saveErr instanceof Error ? saveErr.message : String(saveErr);
-          savedInfo = `\n\nFailed to save partial thread: ${saveMsg}`;
-        }
-        return errorResponse(`Flow failed: ${message}${savedInfo}`);
+        project.dispose();
+        return errorResponse(`Flow failed: ${message}\n\nTurns completed so far are persisted in .alfred/alfred.db`);
       }
 
-      debate.closedAt = new Date().toISOString();
-      await saveDebate(projectRoot, debate);
+      const closedAt = new Date().toISOString();
+      debate.closedAt = closedAt;
+      project.database.markDebateClosed(debateId, closedAt);
 
-      const threadText = formatThread(debate, true);
+      const threadText = AlfredStorage.formatThread(debate, true);
 
       const result = [
         `## Debate: ${debateId}`,
@@ -235,6 +240,7 @@ Example flows:
         `Now synthesize the above contributions into a coherent response for the user.`,
       ].join("\n");
 
+      project.dispose();
       return textResponse(result, { debate });
     },
   });
@@ -252,12 +258,15 @@ Example flows:
 
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       const { projectRoot, team: teamName } = params;
+      const project = new AlfredProject(projectRoot);
 
       if (!teamName) {
-        const teams = await listTeams(projectRoot);
+        const teams = await project.storage.listTeams();
         if (teams.length === 0) {
+          project.dispose();
           return textResponse("No teams found in .alfred/teams/", { teams: [] });
         }
+        project.dispose();
         return textResponse(
           `Available teams:\n${teams.map((t) => `- ${t}`).join("\n")}`,
           { teams },
@@ -265,12 +274,14 @@ Example flows:
       }
 
       try {
-        const team = await loadTeam(projectRoot, teamName);
+        const team = await project.storage.loadTeam(teamName);
         const members = team.members
           .map((m) => `- **${m.id}** (${m.hat}) — ${m.role}\n  _${m.personality}_`)
           .join("\n");
+        project.dispose();
         return textResponse(`**${team.name}**: ${team.description}\n\n${members}`, { team });
       } catch {
+        project.dispose();
         return errorResponse(`Team '${teamName}' not found`);
       }
     },

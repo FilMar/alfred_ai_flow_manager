@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
-import { COLLECTION, VECTOR_SIZE } from "./config.js";
+import { COLLECTION, DENSE_VECTOR_NAME, SPARSE_VECTOR_NAME, VECTOR_SIZE } from "./config.js";
 import { qdrantClient } from "./clients.js";
 import { HttpError } from "./http-client.js";
-import type { Note, NoteUpdate, SearchOptions, SearchResult } from "./types.js";
-import { DEFAULT_EXCLUDED_STATES } from "./types.js";
+import type { Note, NoteUpdate, SearchOptions, SearchResult, Citation } from "./types.js";
+import { NOTE_TYPES, isEvidence, noteToText } from "./types.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Genera un UUID deterministico da SHA256(what + when). */
+/** Genera un UUID-shaped ID deterministico da SHA256(what + ":" + when). Usa i primi 128 bit. */
 export function noteId(what: string, when: string): string {
   const hash = createHash("sha256").update(`${what}:${when}`).digest("hex");
   return [
@@ -19,31 +19,124 @@ export function noteId(what: string, when: string): string {
   ].join("-");
 }
 
+/**
+ * Genera un vettore sparse BM25-style dal testo.
+ * Qdrant applica IDF lato server (modifier: "idf").
+ * Nessun modello esterno richiesto — tokenizzazione locale.
+ */
+export function buildSparseVector(text: string): { indices: number[]; values: number[] } {
+  const tokens = text
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((t) => t.length >= 2);
+
+  if (tokens.length === 0) return { indices: [], values: [] };
+
+  // Calcola TF per ogni token
+  const freq = new Map<number, number>();
+  for (const token of tokens) {
+    const idx = hashToken(token);
+    freq.set(idx, (freq.get(idx) ?? 0) + 1);
+  }
+
+  const total = tokens.length;
+  const indices: number[] = [];
+  const values: number[] = [];
+  for (const [idx, count] of freq.entries()) {
+    indices.push(idx);
+    values.push(count / total); // TF normalizzato
+  }
+
+  return { indices, values };
+}
+
+/** Hash djb2 mappato a [0, VOCAB_SIZE). Collision-tolerant per uso personale. */
+function hashToken(token: string, vocabSize = 32768): number {
+  let hash = 5381;
+  for (let i = 0; i < token.length; i++) {
+    hash = ((hash << 5) + hash + token.charCodeAt(i)) & 0x7fffffff;
+  }
+  return hash % vocabSize;
+}
+
 // ─── Setup ───────────────────────────────────────────────────────────────────
 
 /**
  * Crea la collezione se non esiste e configura gli indici keyword
- * su `stato`, `tags`, `tipo` per filtri O(1).
+ * su `tags`, `kind` per filtri O(1).
  */
 export async function ensureCollection(): Promise<void> {
   const check = await qdrantClient.fetch("GET", `/collections/${COLLECTION}`);
-  if (check.ok) return;
 
+  if (check.ok) {
+    const info = await check.json() as {
+      result?: {
+        config?: { params?: { sparse_vectors?: unknown } };
+        payload_schema?: Record<string, unknown>;
+      };
+    };
+
+    if (info.result?.config?.params?.sparse_vectors === undefined) {
+      // Schema vecchio — elimina e ricrea
+      try {
+        await qdrantClient.request("DELETE", `/collections/${COLLECTION}`, undefined);
+      } catch (err) {
+        if (!(err instanceof HttpError && err.status === 404)) throw err;
+      }
+      // continua sotto alla creazione
+    } else {
+      // Schema corretto — verifica che gli indici esistano
+      const schema = info.result?.payload_schema ?? {};
+      const missingKeyword = ["tags", "kind"].filter((f) => !(f in schema));
+      const missingText = ["what", "why"].filter((f) => !(f in schema));
+
+      for (const field of missingKeyword) {
+        await qdrantClient.request("PUT", `/collections/${COLLECTION}/index`, {
+          field_name: field,
+          field_schema: "keyword",
+        });
+      }
+      for (const field of missingText) {
+        await qdrantClient.request("PUT", `/collections/${COLLECTION}/index`, {
+          field_name: field,
+          field_schema: { type: "text", tokenizer: "word", lowercase: true },
+        });
+      }
+      return;
+    }
+  } else if (check.status !== 404) {
+    const text = await check.text();
+    throw new Error(`Qdrant: errore su GET collection — ${check.status} ${text}`);
+  }
+
+  // Crea collection con dense (named) + sparse (IDF)
   const create = await qdrantClient.fetch("PUT", `/collections/${COLLECTION}`, {
-    vectors: { size: VECTOR_SIZE, distance: "Cosine" },
+    vectors: {
+      [DENSE_VECTOR_NAME]: { size: VECTOR_SIZE, distance: "Cosine" },
+    },
+    sparse_vectors: {
+      [SPARSE_VECTOR_NAME]: { modifier: "idf" },
+    },
   });
-  // 409 = collezione già esistente (race condition su save paralleli) — non è un errore
+
   if (!create.ok && create.status !== 409) {
     const text = await create.text();
     throw new Error(`Qdrant: impossibile creare la collezione — ${create.status} ${text}`);
   }
-  if (create.status === 409) return;
 
-  // Indici keyword per filtri rapidi
-  for (const field of ["stato", "tags", "tipo"]) {
+  // Indici keyword per filtri O(1)
+  for (const field of ["tags", "kind"]) {
     await qdrantClient.request("PUT", `/collections/${COLLECTION}/index`, {
       field_name: field,
       field_schema: "keyword",
+    });
+  }
+
+  // Text index su `what` e `why` per full-text search
+  for (const field of ["what", "why"]) {
+    await qdrantClient.request("PUT", `/collections/${COLLECTION}/index`, {
+      field_name: field,
+      field_schema: { type: "text", tokenizer: "word", lowercase: true },
     });
   }
 }
@@ -52,8 +145,18 @@ export async function ensureCollection(): Promise<void> {
 
 /** Salva (o sovrascrive) una nota con il suo vettore. */
 export async function upsert(note: Note, vector: number[]): Promise<void> {
+  const sparse = buildSparseVector(noteToText(note));
   await qdrantClient.request("PUT", `/collections/${COLLECTION}/points?wait=true`, {
-    points: [{ id: note.id, vector, payload: note }],
+    points: [
+      {
+        id: note.id,
+        vector: {
+          [DENSE_VECTOR_NAME]: vector,
+          [SPARSE_VECTOR_NAME]: sparse,
+        },
+        payload: note,
+      },
+    ],
   });
 }
 
@@ -88,28 +191,19 @@ export async function getByIds(ids: string[]): Promise<Note[]> {
  */
 function buildSearchFilter(options: SearchOptions): Record<string, unknown> | undefined {
   const must: unknown[] = [];
-  const must_not: unknown[] = [];
-
-  // Stato: se non specificato esclude per default superata/consolidata
-  if (options.stato?.length) {
-    must.push({ key: "stato", match: { any: options.stato } });
-  } else {
-    must_not.push({ key: "stato", match: { any: DEFAULT_EXCLUDED_STATES } });
-  }
 
   if (options.tags?.length) {
     must.push({ key: "tags", match: { any: options.tags } });
   }
 
-  if (options.tipo?.length) {
-    must.push({ key: "tipo", match: { any: options.tipo } });
+  if (options.evidence_only) {
+    must.push({ key: "kind", match: { any: NOTE_TYPES.filter(isEvidence) } });
+  } else if (options.kind?.length) {
+    must.push({ key: "kind", match: { any: options.kind } });
   }
 
-  if (must.length === 0 && must_not.length === 0) return undefined;
-  return {
-    ...(must.length > 0 && { must }),
-    ...(must_not.length > 0 && { must_not }),
-  };
+  if (must.length === 0) return undefined;
+  return { must };
 }
 
 // ─── Traversal ────────────────────────────────────────────────────────────────
@@ -136,18 +230,19 @@ async function traverseCorrelates(
 
     let ids = [
       ...new Set(
-        frontier.flatMap((n) => n.correlati.map((c) => c.id)).filter((id) => !seen.has(id)),
+        frontier.flatMap((n) => n.refs.map((c) => c.id)).filter((id) => !seen.has(id)),
       ),
     ];
 
     if (ids.length === 0) break;
 
     // Batch se troppi ID — protegge da richieste POST massicce
-    if (ids.length > MAX_IDS_PER_BATCH) {
-      ids = ids.slice(0, MAX_IDS_PER_BATCH);
+    const linked: Note[] = [];
+    for (let i = 0; i < ids.length; i += MAX_IDS_PER_BATCH) {
+      const batch = ids.slice(i, i + MAX_IDS_PER_BATCH);
+      const batchResult = await getByIds(batch);
+      linked.push(...batchResult);
     }
-
-    const linked = await getByIds(ids);
     frontier = [];
 
     for (const note of linked) {
@@ -172,24 +267,68 @@ async function traverseCorrelates(
  *
  * Di default esclude note "superata" e "consolidata".
  */
+type QdrantQueryResponse = { result: { points: Array<{ payload: Note; score: number }> } };
+
 export async function search(vector: number[], options: SearchOptions = {}): Promise<SearchResult[]> {
   const filter = buildSearchFilter(options);
 
-  const data = await qdrantClient.request<{ result: Array<{ payload: Note; score: number }> }>(
-    "POST",
-    `/collections/${COLLECTION}/points/search`,
-    {
-      vector,
-      limit: options.limit ?? 10,
-      with_payload: true,
-      ...(filter && { filter }),
-    },
-  );
+  let data: QdrantQueryResponse;
 
-  const results: SearchResult[] = data.result.map((r) => ({
+  if (options.hybrid && options.query_text) {
+    // Hybrid: dense + sparse con RRF fusion via Query API
+    const sparse = buildSparseVector(options.query_text);
+    const prefetchLimit = Math.max((options.limit ?? 10) * 3, 20);
+
+    data = await qdrantClient.request<QdrantQueryResponse>(
+      "POST",
+      `/collections/${COLLECTION}/points/query`,
+      {
+        prefetch: [
+          {
+            query: vector,
+            using: DENSE_VECTOR_NAME,
+            limit: prefetchLimit,
+            ...(filter && { filter }),
+          },
+          {
+            query: sparse,
+            using: SPARSE_VECTOR_NAME,
+            limit: prefetchLimit,
+            ...(filter && { filter }),
+          },
+        ],
+        query: { fusion: "rrf" },
+        limit: options.limit ?? 10,
+        with_payload: true,
+        ...(filter && { filter }),
+      },
+    );
+  } else {
+    // Dense-only via Query API (stessa API, senza prefetch)
+    data = await qdrantClient.request<QdrantQueryResponse>(
+      "POST",
+      `/collections/${COLLECTION}/points/query`,
+      {
+        query: vector,
+        using: DENSE_VECTOR_NAME,
+        limit: options.limit ?? 10,
+        with_payload: true,
+        ...(filter && { filter }),
+      },
+    );
+  }
+
+  const results: SearchResult[] = data.result.points.map((r) => ({
     note: r.payload,
     score: r.score,
     via: "search" as const,
+    citation: {
+      note_id: r.payload.id,
+      snippet: r.payload.what.slice(0, 200),
+      score: r.score,
+      source: r.payload.source,
+      timestamp: r.payload.when,
+    },
   }));
 
   const depth = options.depth ?? 1;
@@ -208,11 +347,11 @@ export async function search(vector: number[], options: SearchOptions = {}): Pro
 
 // ─── Update ──────────────────────────────────────────────────────────────────
 
-/** Aggiorna `stato` e/o `correlati` di una nota esistente. */
+/** Aggiorna `kind` e/o `refs` di una nota esistente. */
 export async function updateNote(id: string, patch: NoteUpdate): Promise<void> {
   const payload: Record<string, unknown> = {};
-  if (patch.stato !== undefined) payload["stato"] = patch.stato;
-  if (patch.correlati !== undefined) payload["correlati"] = patch.correlati;
+  if (patch.kind !== undefined) payload["kind"] = patch.kind;
+  if (patch.refs !== undefined) payload["refs"] = patch.refs;
 
   if (Object.keys(payload).length === 0) return;
 
@@ -230,12 +369,30 @@ export async function updateNote(id: string, patch: NoteUpdate): Promise<void> {
  * Ritorna null se la collezione è vuota o non raggiungibile.
  */
 export async function randomNoteId(): Promise<string | null> {
+  // Prima recupera il conteggio totale
+  let info: { result?: { points_count?: number } };
+  try {
+    info = await qdrantClient.request<{ result?: { points_count?: number } }>(
+      "GET",
+      `/collections/${COLLECTION}`,
+    );
+  } catch (err) {
+    if (err instanceof HttpError && err.status === 404) return null;
+    throw new Error(`randomNoteId: Qdrant unreachable — ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  const count = info.result?.points_count ?? 0;
+  if (count === 0) return null;
+
+  // Offset casuale su tutta la collezione
+  const offset = Math.floor(Math.random() * count);
+
   let data: { result?: { points?: { id: string }[] } };
   try {
     data = await qdrantClient.request<{ result?: { points?: { id: string }[] } }>(
       "POST",
       `/collections/${COLLECTION}/points/scroll`,
-      { limit: 100, with_payload: false, with_vector: false },
+      { limit: 1, offset, with_payload: false, with_vector: false },
     );
   } catch (err) {
     if (err instanceof HttpError && err.status === 404) return null;
@@ -244,5 +401,5 @@ export async function randomNoteId(): Promise<string | null> {
 
   const points = data.result?.points ?? [];
   if (points.length === 0) return null;
-  return points[Math.floor(Math.random() * points.length)].id;
+  return points[0].id;
 }

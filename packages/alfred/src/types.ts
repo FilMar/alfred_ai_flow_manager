@@ -98,6 +98,12 @@ export interface DebateEntry {
   timestamp: string;
   /** Present in memory during execution, stripped from debate.json (transcript lives in thread.md) */
   content?: string;
+  /** NEW: Performance metrics captured during execution */
+  performance?: {
+    duration_ms: number;
+    exit_code: number;
+    error?: string;
+  };
 }
 
 export interface DebateRequest {
@@ -131,4 +137,30 @@ export interface AgentTurnResult {
   memberId: string;
   output: string;
   exitCode: number;
+  duration_ms?: number;
+  error?: string;
+}
+
+// ─── Database Rows ──────────────────────────────────────────────────────────────────
+
+export interface DebateRow {
+  id: string;
+  team: string;
+  sequence: number;
+  flow: string;
+  request_title: string;
+  request_prompt: string;
+  created_at: string;
+  closed_at: string | null;
+}
+
+export interface DebateEntryRow {
+  id: number;
+  debate_id: string;
+  author: string;
+  timestamp: string;
+  content: string;
+  duration_ms: number | null;
+  exit_code: number | null;
+  error_message: string | null;
 }

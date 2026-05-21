@@ -9,3 +9,6 @@ export const EMBED_MODEL = "nomic-embed-text";
 
 /** Dimensione vettore di nomic-embed-text */
 export const VECTOR_SIZE = 768;
+
+export const DENSE_VECTOR_NAME = "dense";
+export const SPARSE_VECTOR_NAME = "sparse";
