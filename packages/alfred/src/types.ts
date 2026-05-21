@@ -152,6 +152,9 @@ export interface DebateRow {
   request_prompt: string;
   created_at: string;
   closed_at: string | null;
+  status: string;
+  last_heartbeat: string | null;
+  worker_pid: number | null;
 }
 
 export interface DebateEntryRow {
@@ -163,4 +166,5 @@ export interface DebateEntryRow {
   duration_ms: number | null;
   exit_code: number | null;
   error_message: string | null;
+  flow_step_id: string | null;
 }

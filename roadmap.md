@@ -41,7 +41,7 @@ Shift from "Save-at-End" to a "Write-per-Turn" model to ensure that every LLM co
 - [ ] **Sync-to-Memory**: Maintain `debate.thread` in RAM as a volatile view, synchronized with the DB as the single source of truth.
 
 ## ⚡ Phase 2B: The Freedom Engine (Async Execution)
-**Status:** 📅 Planned
+**Status:** ✅ Completed
 
 ### Core Objectives
 Decouple execution from the main process. Alfred becomes a background service that can be monitored and queried in real-time without blocking the user.
@@ -57,7 +57,7 @@ Decouple execution from the main process. Alfred becomes a background service th
 ---
 
 ## ♻️ Phase 3: The Resurrection Protocol (Recovery)
-**Status:** 📅 Planned
+**Status:** 🚀 In Progress
 
 ### Core Objectives
 Implement a deterministic recovery mechanism to resume interrupted debates without losing progress or wasting tokens.

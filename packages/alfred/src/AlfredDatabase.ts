@@ -52,6 +52,9 @@ export class AlfredDatabase {
           request_prompt TEXT NOT NULL,
           created_at TEXT NOT NULL,
           closed_at TEXT,
+          status TEXT NOT NULL DEFAULT 'running',
+          last_heartbeat TEXT,
+          worker_pid INTEGER,
           UNIQUE(team, sequence),
           CHECK(created_at IS NOT NULL)
         );
@@ -65,6 +68,7 @@ export class AlfredDatabase {
           duration_ms INTEGER,
           exit_code INTEGER,
           error_message TEXT,
+          flow_step_id TEXT,
           FOREIGN KEY(debate_id) REFERENCES debates(id) ON DELETE CASCADE
         );
 
@@ -89,37 +93,65 @@ export class AlfredDatabase {
         CREATE INDEX idx_debates_team_sequence ON debates(team, sequence DESC);
         CREATE INDEX idx_debates_created_at ON debates(created_at DESC);
       `);
-      this.db.exec("PRAGMA user_version = 1");
+      this.db.exec("PRAGMA user_version = 2");
     }
   }
 
   // ─── Write ────────────────────────────────────────────────────────────────
 
-  createDebate(debate: Debate): void {
-    this.db.prepare(`
-      INSERT INTO debates (
-        id, team, sequence, flow, request_title, request_prompt,
-        created_at, closed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      debate.id,
-      debate.team,
-      debate.sequence,
-      JSON.stringify(debate.flow),
-      debate.request.title,
-      debate.request.prompt,
-      debate.createdAt,
-      debate.closedAt ?? null,
-    );
+  async withTransaction<T>(fn: () => T): Promise<T> {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = fn();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
   }
 
-  insertTurn(debateId: string, entry: DebateEntry): void {
+  createDebate(debate: Omit<Debate, "id" | "sequence">): { id: string; sequence: number } {
+    // We use a manual transaction here because DatabaseSync is synchronous, 
+    // but we want the atomicity of Sequence + Insert.
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const sequence = this.getNextSequence(debate.team);
+      const title = debate.request.title;
+      const id = `${String(sequence).padStart(4, "0")}_${title}`;
+
+      this.db.prepare(`
+        INSERT INTO debates (
+          id, team, sequence, flow, request_title, request_prompt,
+          created_at, closed_at, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        debate.team,
+        sequence,
+        JSON.stringify(debate.flow),
+        debate.request.title,
+        debate.request.prompt,
+        debate.createdAt,
+        debate.closedAt ?? null,
+        "running",
+      );
+
+      this.db.exec("COMMIT");
+      return { id, sequence };
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
+  insertTurn(debateId: string, entry: DebateEntry, flowStepId: string | null = null): void {
     const perf = entry.performance;
     this.db.prepare(`
       INSERT INTO debate_entries (
         debate_id, author, timestamp, content,
-        duration_ms, exit_code, error_message
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        duration_ms, exit_code, error_message, flow_step_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       debateId,
       entry.author,
@@ -128,13 +160,42 @@ export class AlfredDatabase {
       perf?.duration_ms ?? null,
       perf?.exit_code ?? null,
       perf?.error ?? null,
+      flowStepId,
     );
   }
 
-  markDebateClosed(debateId: string, closedAt: string): void {
+  markDebateClosed(debateId: string, closedAt: string, status: "completed" | "failed" = "completed"): void {
     this.db.prepare(`
-      UPDATE debates SET closed_at = ? WHERE id = ?
-    `).run(closedAt, debateId);
+      UPDATE debates SET closed_at = ?, status = ? WHERE id = ?
+    `).run(closedAt, status, debateId);
+  }
+
+  updateDebateStatus(debateId: string, status: "running" | "completed" | "failed" | "paused"): void {
+    this.db.prepare(`
+      UPDATE debates SET status = ? WHERE id = ?
+    `).run(status, debateId);
+  }
+
+  updateWorkerPid(debateId: string, pid: number): void {
+    this.db.prepare(`
+      UPDATE debates SET worker_pid = ? WHERE id = ?
+    `).run(pid, debateId);
+  }
+
+  updateHeartbeat(debateId: string): void {
+    this.db.prepare(`
+      UPDATE debates SET last_heartbeat = ? WHERE id = ?
+    `).run(new Date().toISOString(), debateId);
+  }
+
+  markStaleDebatesFailed(staleThresholdMs = 5 * 60 * 1000): void {
+    const cutoff = new Date(Date.now() - staleThresholdMs).toISOString();
+    this.db.prepare(`
+      UPDATE debates SET status = 'failed', closed_at = ?
+      WHERE status = 'running'
+        AND last_heartbeat IS NOT NULL
+        AND last_heartbeat < ?
+    `).run(new Date().toISOString(), cutoff);
   }
 
   getNextSequence(teamName: string): number {
@@ -150,16 +211,47 @@ export class AlfredDatabase {
 
   getDebateMetadata(debateId: string): DebateRow | undefined {
     return this.db.prepare(`
-      SELECT id, team, sequence, flow, request_title, request_prompt, created_at, closed_at
+      SELECT id, team, sequence, flow, request_title, request_prompt,
+             created_at, closed_at, status, last_heartbeat, worker_pid
       FROM debates WHERE id = ?
     `).get(debateId) as DebateRow | undefined;
   }
 
   getDebateEntries(debateId: string): DebateEntryRow[] {
     return this.db.prepare(`
-      SELECT id, debate_id, author, timestamp, content, duration_ms, exit_code, error_message
+      SELECT id, debate_id, author, timestamp, content, duration_ms, exit_code, error_message, flow_step_id
       FROM debate_entries WHERE debate_id = ? ORDER BY id ASC
     `).all(debateId) as unknown as DebateEntryRow[];
+  }
+
+  reloadDebate(debateId: string): Debate | null {
+    const meta = this.getDebateMetadata(debateId);
+    if (!meta) return null;
+
+    const entries = this.getDebateEntries(debateId);
+
+    return {
+      id: meta.id,
+      team: meta.team,
+      sequence: meta.sequence,
+      flow: JSON.parse(meta.flow),
+      request: {
+        title: meta.request_title,
+        prompt: meta.request_prompt,
+      },
+      createdAt: meta.created_at,
+      closedAt: meta.closed_at ?? undefined,
+      thread: entries.map((e) => ({
+        author: e.author,
+        timestamp: e.timestamp,
+        content: e.content,
+        performance: {
+          duration_ms: e.duration_ms ?? 0,
+          exit_code: e.exit_code ?? 0,
+          error: e.error_message ?? undefined,
+        },
+      })),
+    };
   }
 
   getMemberStats(debateId: string): MemberStats[] {
@@ -209,6 +301,13 @@ export class AlfredDatabase {
       WHERE debate_entries_fts MATCH ?
       ORDER BY rank DESC LIMIT ?
     `).all(query, limit) as unknown as Array<{ debate_id: string; author: string; content: string; timestamp: string }>;
+  }
+
+  getCompletedFlowSteps(debateId: string): string[] {
+    return this.db.prepare(`
+      SELECT flow_step_id FROM debate_entries 
+      WHERE debate_id = ? AND flow_step_id IS NOT NULL
+    `).all(debateId).map(row => (row as any).flow_step_id);
   }
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────

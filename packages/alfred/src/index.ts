@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import * as path from "node:path";
+import { spawn } from "node:child_process";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { AlfredProject as AlfredProjectType, Debate, Flow, Team } from "./types.js";
@@ -163,10 +164,7 @@ Each member requires:
   pi.registerTool({
     name: "alfred_run",
     label: "Alfred Run",
-    description: `Orchestrate a team debate on a task.
-
-Assembles a team of AI agents with distinct cognitive profiles, runs them through a flow,
-and returns the full thread for synthesis.
+    description: `Orchestrate a team debate on a task. Returns immediately and runs in background.
 
 Flow format (nested array):
   - "member-id"                       → sequential step
@@ -185,7 +183,7 @@ Example flows:
       task: Type.String({ description: "The task or question for the team" }),
     }),
 
-    async execute(_id, params, signal, _onUpdate, _ctx) {
+    async execute(_id, params, _signal, _onUpdate, _ctx) {
       const { projectRoot, team: teamName, task } = params;
       const flow = params.flow as Flow;
       const project = new AlfredProject(projectRoot);
@@ -199,12 +197,7 @@ Example flows:
       }
 
       const title = slugifyDebateTitle(task);
-      const sequence = project.database.getNextSequence(teamName);
-      const debateId = `${String(sequence).padStart(4, "0")}_${title}`;
-
-      const debate: Debate = {
-        id: debateId,
-        sequence,
+      const debateData: Omit<Debate, "id" | "sequence"> = {
         team: teamName,
         flow,
         request: {
@@ -215,37 +208,195 @@ Example flows:
         createdAt: new Date().toISOString(),
       };
 
+      const { id: debateId, sequence } = project.database.createDebate(debateData);
+      
       try {
-        project.database.createDebate(debate);
-        await runFlow(flow, team.members, debate, project.database, signal);
+        // Spawn detached worker process
+        const workerPath = path.join(projectRoot, "packages/alfred/dist/worker.js");
+        const args = [
+          projectRoot,
+          teamName,
+          debateId,
+          task,
+          JSON.stringify(flow),
+        ];
+
+        const child = spawn("node", [workerPath, ...args], {
+          cwd: projectRoot,
+          detached: true,
+          stdio: "ignore",
+        });
+
+        if (child.pid !== undefined) {
+          project.database.updateWorkerPid(debateId, child.pid);
+        }
+        child.unref();
+
+        project.dispose();
+        return textResponse(`Debate initiated. ID: ${debateId}. Use \`alfred_status\` to track progress.`, { debateId });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         project.dispose();
-        return errorResponse(`Flow failed: ${message}\n\nTurns completed so far are persisted in .alfred/alfred.db`);
+        return errorResponse(`Failed to initiate background process: ${message}`);
       }
-
-      const closedAt = new Date().toISOString();
-      debate.closedAt = closedAt;
-      project.database.markDebateClosed(debateId, closedAt);
-
-      const threadText = AlfredStorage.formatThread(debate, true);
-
-      const result = [
-        `## Debate: ${debateId}`,
-        `Team: **${teamName}** | ${debate.thread.length} contributions`,
-        ``,
-        threadText,
-        ``,
-        `---`,
-        `Now synthesize the above contributions into a coherent response for the user.`,
-      ].join("\n");
-
-      project.dispose();
-      return textResponse(result, { debate });
     },
   });
 
-  // ─── alfred_teams ─────────────────────────────────────────────────────────
+  // ─── alfred_status ───────────────────────────────────────────────────────
+
+  pi.registerTool({
+    name: "alfred_status",
+    label: "Alfred Status",
+    description: "Check the current status of a debate. Returns status and active member if running.",
+    parameters: Type.Object({
+      projectRoot: projectRootParam,
+      debateId: Type.String({ description: "The debate ID to check" }),
+    }),
+
+    async execute(_id, params, _signal, _onUpdate, _ctx) {
+      const { projectRoot, debateId } = params;
+      const project = new AlfredProject(projectRoot);
+
+      project.database.markStaleDebatesFailed();
+
+      const metadata = project.database.getDebateMetadata(debateId);
+      if (!metadata) {
+        project.dispose();
+        return errorResponse(`Debate '${debateId}' not found.`);
+      }
+
+      const entries = project.database.getDebateEntries(debateId);
+      const lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
+
+      let statusText = `Status: **${metadata.status}**`;
+      if (metadata.status === "running" && lastEntry) {
+        statusText += `\nActive Member: **${lastEntry.author}**`;
+        if (metadata.last_heartbeat) {
+          statusText += `\nLast Heartbeat: ${metadata.last_heartbeat}`;
+        }
+        if (metadata.worker_pid) {
+          statusText += `\nWorker PID: ${metadata.worker_pid}`;
+        }
+      } else if (metadata.status === "completed") {
+        statusText += `\nCompleted at: ${metadata.closed_at}`;
+      } else if (metadata.status === "failed") {
+        statusText += `\nFailed at: ${metadata.closed_at}`;
+      }
+
+      project.dispose();
+      return textResponse(statusText, { status: metadata.status });
+    },
+  });
+
+  // ─── alfred_resume ──────────────────────────────────────────────────────────
+
+  pi.registerTool({
+    name: "alfred_resume",
+    label: "Alfred Resume",
+    description: "Resurrect a debate that crashed or timed out. Restarts the worker from the last successfully persisted turn.",
+    parameters: Type.Object({
+      projectRoot: projectRootParam,
+      debateId: Type.String({ description: "The debate ID to resume" }),
+    }),
+
+    async execute(_id, params, _signal, _onUpdate, _ctx) {
+      const { projectRoot, debateId } = params;
+      const project = new AlfredProject(projectRoot);
+
+      const metadata = project.database.getDebateMetadata(debateId);
+      if (!metadata) {
+        project.dispose();
+        return errorResponse(`Debate '${debateId}' not found.`);
+      }
+
+      if (metadata.status === "completed") {
+        project.dispose();
+        return errorResponse(`Debate '${debateId}' is already completed and cannot be resumed.`);
+      }
+
+      // ─── Concurrency Guard ─────────────────────────────────────────────────
+      // To prevent multiple resurrection workers, we use an atomic status update.
+      let oldPid: number | null = null;
+
+      try {
+        await project.database.withTransaction(() => {
+          const current = project.database.getDebateMetadata(debateId);
+          if (!current) throw new Error("Debate disappeared");
+
+          // If it's running and has a fresh heartbeat, don't resume.
+          if (current.status === "running" && current.last_heartbeat) {
+            const lastHb = new Date(current.last_heartbeat).getTime();
+            if (Date.now() - lastHb < 60 * 1000) { // 1 minute threshold
+              throw new Error("Debate is currently active and healthy. Use alfred_status to monitor.");
+            }
+          }
+
+          oldPid = current.worker_pid ?? null;
+          project.database.updateDebateStatus(debateId, "running");
+          // Use -1 as a sentinel to indicate "resurrection in progress"
+          project.database.updateWorkerPid(debateId, -1);
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        project.dispose();
+        return errorResponse(`Concurrency guard: ${message}`);
+      }
+
+      // ─── Zombie Killer ────────────────────────────────────────────────────
+      if (oldPid && oldPid !== -1) {
+        try {
+          // Signal 0 checks for process existence
+          process.kill(oldPid, 0);
+          
+          // Process is alive, try graceful then forced shutdown
+          process.kill(oldPid, "SIGTERM");
+          
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          try {
+            process.kill(oldPid, 0);
+            process.kill(oldPid, "SIGKILL");
+          } catch {}
+        } catch (e) {
+          // ESRCH: process doesn't exist, no action needed
+        }
+      }
+
+      const debate = project.database.reloadDebate(debateId);
+      if (!debate) {
+        project.dispose();
+        return errorResponse(`Failed to reload debate state for '${debateId}'.`);
+      }
+
+      try {
+        const workerPath = path.join(projectRoot, "packages/alfred/dist/worker.js");
+        const args = [
+          projectRoot,
+          metadata.team,
+          debateId,
+          metadata.request_prompt,
+          JSON.stringify(debate.flow),
+        ];
+
+        const child = spawn("node", [workerPath, ...args], {
+          cwd: projectRoot,
+          detached: true,
+          stdio: "ignore",
+        });
+
+        if (child.pid !== undefined) {
+          project.database.updateWorkerPid(debateId, child.pid);
+        }
+        child.unref();
+
+        project.dispose();
+        return textResponse(`Resurrecting debate ${debateId} using surgical resume protocol...`, { debateId });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        project.dispose();
+        return errorResponse(`Failed to resume background process: ${message}`);
+      }
+    },
+  });
 
   pi.registerTool({
     name: "alfred_teams",

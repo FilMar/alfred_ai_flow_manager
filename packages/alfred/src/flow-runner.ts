@@ -57,6 +57,7 @@ async function executeAndPersistTurn(
   turnTask: () => Promise<string>,
   debate: Debate,
   db: AlfredDatabase,
+  flowStepId: string,
 ): Promise<void> {
   const start = performance.now();
   let output: string;
@@ -85,43 +86,57 @@ async function executeAndPersistTurn(
     },
   };
 
-  db.insertTurn(debate.id, entry);
+  db.insertTurn(debate.id, entry, flowStepId);
   debate.thread.push(entry);
 }
 
 async function runStep(
   step: FlowStep,
+  stepIndex: number,
   members: TeamMember[],
   debate: Debate,
   db: AlfredDatabase,
+  completedSteps: Set<string>,
   signal?: AbortSignal,
 ): Promise<void> {
   if (typeof step === "string") {
     const member = getMember(step, members);
+    const flowStepId = `step_${stepIndex}_${member.id}`;
+
+    if (completedSteps.has(flowStepId)) return;
+
     await executeAndPersistTurn(
       member,
       () => invokeMember(member, debate, AlfredStorage.formatThread(debate), signal),
       debate,
       db,
+      flowStepId,
     );
-    return;
+    completedSteps.add(flowStepId);
   }
 
   if (Array.isArray(step)) {
+    const groupSize = step.length;
     const snapshot = AlfredStorage.formatThread(debate);
+
     await Promise.all(
       step.map(async (s) => {
         if (typeof s !== "string") throw new Error("Nested parallel groups are not supported");
         const member = getMember(s, members);
+        const flowStepId = `step_${stepIndex}_${member.id}`;
+
+        if (completedSteps.has(flowStepId)) return;
+
         await executeAndPersistTurn(
           member,
           () => invokeMember(member, debate, snapshot, signal),
           debate,
           db,
+          flowStepId,
         );
+        completedSteps.add(flowStepId);
       }),
     );
-    return;
   }
 
   if (isRoundtable(step)) {
@@ -129,15 +144,20 @@ async function runStep(
     for (let round = 0; round < rounds; round++) {
       for (const memberId of roundtable) {
         const member = getMember(memberId, members);
+        const flowStepId = `step_${stepIndex}_rt_${round}_${member.id}`;
+
+        if (completedSteps.has(flowStepId)) continue;
+
         await executeAndPersistTurn(
           member,
           () => invokeMember(member, debate, AlfredStorage.formatThread(debate), signal),
           debate,
           db,
+          flowStepId,
         );
+        completedSteps.add(flowStepId);
       }
     }
-    return;
   }
 }
 
@@ -148,8 +168,14 @@ export async function runFlow(
   db: AlfredDatabase,
   signal?: AbortSignal,
 ): Promise<void> {
-  for (const step of flow) {
+  const completedSteps = new Set(db.getCompletedFlowSteps(debate.id));
+  
+  for (let i = 0; i < flow.length; i++) {
     if (signal?.aborted) break;
-    await runStep(step, members, debate, db, signal);
+    
+    // Update heartbeat to prevent markStaleDebatesFailed from killing long turns
+    db.updateHeartbeat(debate.id);
+    
+    await runStep(flow[i], i, members, debate, db, completedSteps, signal);
   }
 }

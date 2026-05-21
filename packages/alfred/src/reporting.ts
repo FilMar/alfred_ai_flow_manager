@@ -1,5 +1,14 @@
-import type { AlfredDatabase } from "./AlfredDatabase.js";
+import {
+  AlfredDatabase,
+  MemberStats,
+  DebateStats,
+  DebateSummary,
+} from "./AlfredDatabase.js";
 
+/**
+ * Generate a Markdown report for a single debate (like the old thread.md).
+ * Includes performance metrics for each contribution.
+ */
 export function generateDebateReport(
   db: AlfredDatabase,
   debateId: string,
@@ -12,6 +21,7 @@ export function generateDebateReport(
 
   const entries = db.getDebateEntries(debateId);
 
+  // Header
   let report = `# Debate: ${metadata.id}\n\n`;
   report += `**Team:** ${metadata.team} | **Sequence:** ${metadata.sequence}\n\n`;
   report += `**Request:** ${metadata.request_prompt}\n\n`;
@@ -21,8 +31,9 @@ export function generateDebateReport(
   }
   report += `\n---\n\n`;
 
+  // Thread entries
   for (const entry of entries) {
-    const ts = entry.timestamp.slice(0, 16);
+    const ts = entry.timestamp.slice(0, 16); // Truncate timestamp
     report += `## ${entry.author} — ${ts}\n\n`;
     report += entry.content + "\n\n";
 
@@ -40,6 +51,9 @@ export function generateDebateReport(
   return report;
 }
 
+/**
+ * Generate a performance summary for a debate.
+ */
 export function generatePerformanceReport(db: AlfredDatabase, debateId: string): string {
   const metadata = db.getDebateMetadata(debateId);
   if (!metadata) {
@@ -50,15 +64,18 @@ export function generatePerformanceReport(db: AlfredDatabase, debateId: string):
   const memberStats = db.getMemberStats(debateId);
 
   let report = `# Performance Report: ${metadata.id}\n\n`;
+
+  // Aggregate stats
   report += `## Aggregate Statistics\n\n`;
   report += `- **Total Entries:** ${stats.total_entries}\n`;
   report += `- **Total Duration:** ${stats.total_duration_ms ?? "N/A"}ms\n`;
   report += `- **Average Duration:** ${stats.avg_duration_ms ?? "N/A"}ms\n`;
   report += `- **Error Count:** ${stats.error_count}\n\n`;
 
+  // Per-member stats
   report += `## Member Statistics\n\n`;
-  report += "| Member | Turns | Avg Duration | Errors |\n";
-  report += "|--------|-------|--------------|--------|\n";
+  report += `| Member | Turns | Avg Duration | Errors |\n`;
+  report += `|--------|-------|--------------|--------|\n`;
 
   for (const member of memberStats) {
     report += `| ${member.author} | ${member.turns} | ${member.avg_duration_ms ?? "N/A"}ms | ${member.error_count} |\n`;
@@ -67,6 +84,9 @@ export function generatePerformanceReport(db: AlfredDatabase, debateId: string):
   return report;
 }
 
+/**
+ * Generate a team summary report listing all debates and their stats.
+ */
 export function generateTeamSummary(db: AlfredDatabase, teamName: string, limit = 50): string {
   const debates = db.getTeamDebates(teamName, limit);
 
@@ -74,12 +94,11 @@ export function generateTeamSummary(db: AlfredDatabase, teamName: string, limit 
   report += `## Debates (${debates.length} total)\n\n`;
 
   if (debates.length === 0) {
-    report += "No debates found.\n";
     return report;
   }
 
-  report += "| ID | Sequence | Entries | Duration | Created |\n";
-  report += "|---|----------|---------|----------|----------|\n";
+  report += `| ID | Sequence | Entries | Duration | Created |\n`;
+  report += `|---|----------|---------|----------|----------|\n`;
 
   for (const debate of debates) {
     const created = debate.created_at.slice(0, 10);
@@ -89,6 +108,9 @@ export function generateTeamSummary(db: AlfredDatabase, teamName: string, limit 
   return report;
 }
 
+/**
+ * Export a debate as JSON (like the old debate.json, but reconstructed from DB).
+ */
 export function exportDebateAsJSON(db: AlfredDatabase, debateId: string): object {
   const metadata = db.getDebateMetadata(debateId);
   if (!metadata) {
@@ -115,6 +137,7 @@ export function exportDebateAsJSON(db: AlfredDatabase, debateId: string): object
       avg_duration_ms: stats.avg_duration_ms,
       error_count: stats.error_count,
     },
+    // Include entries (unlike old format which had them in thread.md)
     thread: entries.map((e) => ({
       author: e.author,
       timestamp: e.timestamp,
