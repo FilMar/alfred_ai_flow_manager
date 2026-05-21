@@ -133,10 +133,10 @@ Each member requires:
         return errorResponse(message);
       }
 
-      const teamDir = path.join(project.root, ".alfred", "teams", validatedTeam.name);
-      if (existsSync(teamDir)) {
+      const teamFile = path.join(project.root, ".alfred", "teams", `${validatedTeam.name}.json`);
+      if (existsSync(teamFile)) {
         project.dispose();
-        return errorResponse(`Team '${validatedTeam.name}' already exists at ${teamDir}.`);
+        return errorResponse(`Team '${validatedTeam.name}' already exists at ${teamFile}.`);
       }
 
       const projectFile = path.join(project.root, ".alfred", "alfred_project.json");

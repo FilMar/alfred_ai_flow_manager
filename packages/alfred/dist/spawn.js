@@ -18,6 +18,7 @@ function piCommand() {
 }
 export async function runAgentTurn(member, systemPrompt, task, signal) {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "alfred-turn-"));
+    const startMs = Date.now();
     try {
         const promptFile = path.join(tempDir, "prompt.md");
         fs.writeFileSync(promptFile, systemPrompt, { mode: 0o600 });
@@ -86,11 +87,24 @@ export async function runAgentTurn(member, systemPrompt, task, signal) {
             child.on("close", (code) => settle(() => resolve(code ?? 1)));
             child.on("error", (err) => settle(() => reject(err)));
         });
+        const durationMs = Date.now() - startMs;
         if (exitCode !== 0) {
             const detail = stderr.trim() ? `\nstderr: ${stderr.trim()}` : "";
-            throw new Error(`[${member.id}] exited with code ${exitCode}${detail}`);
+            const errorMsg = `[${member.id}] exited with code ${exitCode}${detail}`;
+            return {
+                memberId: member.id,
+                output: stdout.trim(),
+                exitCode,
+                duration_ms: durationMs,
+                error: errorMsg,
+            };
         }
-        return { memberId: member.id, output: stdout.trim(), exitCode };
+        return {
+            memberId: member.id,
+            output: stdout.trim(),
+            exitCode,
+            duration_ms: durationMs,
+        };
     }
     finally {
         fs.rmSync(tempDir, { recursive: true, force: true });

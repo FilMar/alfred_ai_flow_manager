@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
 import * as path from "node:path";
+import { spawn } from "node:child_process";
 import { Type } from "typebox";
 import { HAT_IDS, TOOL_IDS, validateTeamName } from "./types.js";
-import { alfredDir, loadTeam, listTeams, nextDebateSequence, saveDebate, saveProject, saveTeam, formatThread } from "./fs.js";
-import { runFlow } from "./flow-runner.js";
+import { AlfredProject } from "./AlfredProject.js";
 import { textResponse, errorResponse } from "./responses.js";
 // ─── Parametri comuni ────────────────────────────────────────────────────────
 /** `projectRoot` è richiesto da tutti i tool — definito una volta sola. */
@@ -56,17 +56,19 @@ export default function registerAlfredExtension(pi) {
         }),
         async execute(_id, params, _signal, _onUpdate, _ctx) {
             const { projectRoot, name, description = "" } = params;
-            const projectFile = path.join(alfredDir(projectRoot), "alfred_project.json");
+            const project = new AlfredProject(projectRoot);
+            const projectFile = path.join(project.root, ".alfred", "alfred_project.json");
             if (existsSync(projectFile)) {
                 return errorResponse(`Project already exists at ${projectFile}. Use alfred_teams to inspect it.`);
             }
-            const project = {
+            const projectData = {
                 name,
                 description,
                 created: new Date().toISOString().slice(0, 10),
             };
-            await saveProject(projectRoot, project);
-            return textResponse(`Project '${name}' initialized at ${projectRoot}/.alfred/`, { project });
+            await project.storage.saveProject(projectData);
+            project.dispose();
+            return textResponse(`Project '${name}' initialized at ${projectRoot}/.alfred/`, { project: projectData });
         },
     });
     // ─── alfred_team_create ───────────────────────────────────────────────────
@@ -94,6 +96,7 @@ Each member requires:
         }),
         async execute(_id, params, _signal, _onUpdate, _ctx) {
             const { projectRoot, team } = params;
+            const project = new AlfredProject(projectRoot);
             let validatedTeam;
             try {
                 validatedTeam = {
@@ -103,20 +106,24 @@ Each member requires:
             }
             catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
+                project.dispose();
                 return errorResponse(message);
             }
-            const teamDir = path.join(alfredDir(projectRoot), "teams", validatedTeam.name);
-            if (existsSync(teamDir)) {
-                return errorResponse(`Team '${validatedTeam.name}' already exists at ${teamDir}.`);
+            const teamFile = path.join(project.root, ".alfred", "teams", `${validatedTeam.name}.json`);
+            if (existsSync(teamFile)) {
+                project.dispose();
+                return errorResponse(`Team '${validatedTeam.name}' already exists at ${teamFile}.`);
             }
-            const projectFile = path.join(alfredDir(projectRoot), "alfred_project.json");
+            const projectFile = path.join(project.root, ".alfred", "alfred_project.json");
             if (!existsSync(projectFile)) {
+                project.dispose();
                 return errorResponse(`No Alfred project found at ${projectRoot}. Run alfred_init first.`);
             }
-            await saveTeam(projectRoot, validatedTeam);
+            await project.storage.saveTeam(validatedTeam);
             const members = validatedTeam.members
                 .map((m) => `  - ${m.id} (${m.hat}) — ${m.role}`)
                 .join("\n");
+            project.dispose();
             return textResponse(`Team '${validatedTeam.name}' created with ${validatedTeam.members.length} members:\n${members}`, { team: validatedTeam });
         },
     });
@@ -124,10 +131,7 @@ Each member requires:
     pi.registerTool({
         name: "alfred_run",
         label: "Alfred Run",
-        description: `Orchestrate a team debate on a task.
-
-Assembles a team of AI agents with distinct cognitive profiles, runs them through a flow,
-and returns the full thread for synthesis.
+        description: `Orchestrate a team debate on a task. Returns immediately and runs in background.
 
 Flow format (nested array):
   - "member-id"                       → sequential step
@@ -144,22 +148,20 @@ Example flows:
             flow: Type.Array(FlowStepSchema, { description: "Execution flow descriptor" }),
             task: Type.String({ description: "The task or question for the team" }),
         }),
-        async execute(_id, params, signal, _onUpdate, _ctx) {
+        async execute(_id, params, _signal, _onUpdate, _ctx) {
             const { projectRoot, team: teamName, task } = params;
             const flow = params.flow;
+            const project = new AlfredProject(projectRoot);
             let team;
             try {
-                team = await loadTeam(projectRoot, teamName);
+                team = await project.storage.loadTeam(teamName);
             }
             catch {
+                project.dispose();
                 return errorResponse(`Team '${teamName}' not found in ${projectRoot}/.alfred/teams/`);
             }
             const title = slugifyDebateTitle(task);
-            const sequence = await nextDebateSequence(projectRoot, teamName);
-            const debateId = `${String(sequence).padStart(4, "0")}_${title}`;
-            const debate = {
-                id: debateId,
-                sequence,
+            const debateData = {
                 team: teamName,
                 flow,
                 request: {
@@ -169,38 +171,174 @@ Example flows:
                 thread: [],
                 createdAt: new Date().toISOString(),
             };
+            const { id: debateId, sequence } = project.database.createDebate(debateData);
             try {
-                await runFlow(flow, team.members, debate, signal);
+                // Spawn detached worker process
+                const workerPath = path.join(projectRoot, "packages/alfred/dist/worker.js");
+                const args = [
+                    projectRoot,
+                    teamName,
+                    debateId,
+                    task,
+                    JSON.stringify(flow),
+                ];
+                const child = spawn("node", [workerPath, ...args], {
+                    cwd: projectRoot,
+                    detached: true,
+                    stdio: "ignore",
+                });
+                if (child.pid !== undefined) {
+                    project.database.updateWorkerPid(debateId, child.pid);
+                }
+                child.unref();
+                project.dispose();
+                return textResponse(`Debate initiated. ID: ${debateId}. Use \`alfred_status\` to track progress.`, { debateId });
             }
             catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
-                let savedInfo = "";
-                try {
-                    await saveDebate(projectRoot, debate);
-                    savedInfo = `\n\nPartial thread saved to .alfred/teams/${teamName}/debates/${debateId}/`;
-                }
-                catch (saveErr) {
-                    const saveMsg = saveErr instanceof Error ? saveErr.message : String(saveErr);
-                    savedInfo = `\n\nFailed to save partial thread: ${saveMsg}`;
-                }
-                return errorResponse(`Flow failed: ${message}${savedInfo}`);
+                project.dispose();
+                return errorResponse(`Failed to initiate background process: ${message}`);
             }
-            debate.closedAt = new Date().toISOString();
-            await saveDebate(projectRoot, debate);
-            const threadText = formatThread(debate, true);
-            const result = [
-                `## Debate: ${debateId}`,
-                `Team: **${teamName}** | ${debate.thread.length} contributions`,
-                ``,
-                threadText,
-                ``,
-                `---`,
-                `Now synthesize the above contributions into a coherent response for the user.`,
-            ].join("\n");
-            return textResponse(result, { debate });
         },
     });
-    // ─── alfred_teams ─────────────────────────────────────────────────────────
+    // ─── alfred_status ───────────────────────────────────────────────────────
+    pi.registerTool({
+        name: "alfred_status",
+        label: "Alfred Status",
+        description: "Check the current status of a debate. Returns status and active member if running.",
+        parameters: Type.Object({
+            projectRoot: projectRootParam,
+            debateId: Type.String({ description: "The debate ID to check" }),
+        }),
+        async execute(_id, params, _signal, _onUpdate, _ctx) {
+            const { projectRoot, debateId } = params;
+            const project = new AlfredProject(projectRoot);
+            project.database.markStaleDebatesFailed();
+            const metadata = project.database.getDebateMetadata(debateId);
+            if (!metadata) {
+                project.dispose();
+                return errorResponse(`Debate '${debateId}' not found.`);
+            }
+            const entries = project.database.getDebateEntries(debateId);
+            const lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
+            let statusText = `Status: **${metadata.status}**`;
+            if (metadata.status === "running" && lastEntry) {
+                statusText += `\nActive Member: **${lastEntry.author}**`;
+                if (metadata.last_heartbeat) {
+                    statusText += `\nLast Heartbeat: ${metadata.last_heartbeat}`;
+                }
+                if (metadata.worker_pid) {
+                    statusText += `\nWorker PID: ${metadata.worker_pid}`;
+                }
+            }
+            else if (metadata.status === "completed") {
+                statusText += `\nCompleted at: ${metadata.closed_at}`;
+            }
+            else if (metadata.status === "failed") {
+                statusText += `\nFailed at: ${metadata.closed_at}`;
+            }
+            project.dispose();
+            return textResponse(statusText, { status: metadata.status });
+        },
+    });
+    // ─── alfred_resume ──────────────────────────────────────────────────────────
+    pi.registerTool({
+        name: "alfred_resume",
+        label: "Alfred Resume",
+        description: "Resurrect a debate that crashed or timed out. Restarts the worker from the last successfully persisted turn.",
+        parameters: Type.Object({
+            projectRoot: projectRootParam,
+            debateId: Type.String({ description: "The debate ID to resume" }),
+        }),
+        async execute(_id, params, _signal, _onUpdate, _ctx) {
+            const { projectRoot, debateId } = params;
+            const project = new AlfredProject(projectRoot);
+            const metadata = project.database.getDebateMetadata(debateId);
+            if (!metadata) {
+                project.dispose();
+                return errorResponse(`Debate '${debateId}' not found.`);
+            }
+            if (metadata.status === "completed") {
+                project.dispose();
+                return errorResponse(`Debate '${debateId}' is already completed and cannot be resumed.`);
+            }
+            // ─── Concurrency Guard ─────────────────────────────────────────────────
+            // To prevent multiple resurrection workers, we use an atomic status update.
+            let oldPid = null;
+            try {
+                await project.database.withTransaction(() => {
+                    const current = project.database.getDebateMetadata(debateId);
+                    if (!current)
+                        throw new Error("Debate disappeared");
+                    // If it's running and has a fresh heartbeat, don't resume.
+                    if (current.status === "running" && current.last_heartbeat) {
+                        const lastHb = new Date(current.last_heartbeat).getTime();
+                        if (Date.now() - lastHb < 60 * 1000) { // 1 minute threshold
+                            throw new Error("Debate is currently active and healthy. Use alfred_status to monitor.");
+                        }
+                    }
+                    oldPid = current.worker_pid ?? null;
+                    project.database.updateDebateStatus(debateId, "running");
+                    // Use -1 as a sentinel to indicate "resurrection in progress"
+                    project.database.updateWorkerPid(debateId, -1);
+                });
+            }
+            catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                project.dispose();
+                return errorResponse(`Concurrency guard: ${message}`);
+            }
+            // ─── Zombie Killer ────────────────────────────────────────────────────
+            if (oldPid && oldPid !== -1) {
+                try {
+                    // Signal 0 checks for process existence
+                    process.kill(oldPid, 0);
+                    // Process is alive, try graceful then forced shutdown
+                    process.kill(oldPid, "SIGTERM");
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    try {
+                        process.kill(oldPid, 0);
+                        process.kill(oldPid, "SIGKILL");
+                    }
+                    catch { }
+                }
+                catch (e) {
+                    // ESRCH: process doesn't exist, no action needed
+                }
+            }
+            const debate = project.database.reloadDebate(debateId);
+            if (!debate) {
+                project.dispose();
+                return errorResponse(`Failed to reload debate state for '${debateId}'.`);
+            }
+            try {
+                const workerPath = path.join(projectRoot, "packages/alfred/dist/worker.js");
+                const args = [
+                    projectRoot,
+                    metadata.team,
+                    debateId,
+                    metadata.request_prompt,
+                    JSON.stringify(debate.flow),
+                ];
+                const child = spawn("node", [workerPath, ...args], {
+                    cwd: projectRoot,
+                    detached: true,
+                    stdio: "ignore",
+                });
+                if (child.pid !== undefined) {
+                    project.database.updateWorkerPid(debateId, child.pid);
+                }
+                child.unref();
+                project.dispose();
+                return textResponse(`Resurrecting debate ${debateId} using surgical resume protocol...`, { debateId });
+            }
+            catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                project.dispose();
+                return errorResponse(`Failed to resume background process: ${message}`);
+            }
+        },
+    });
     pi.registerTool({
         name: "alfred_teams",
         label: "Alfred Teams",
@@ -211,21 +349,26 @@ Example flows:
         }),
         async execute(_id, params, _signal, _onUpdate, _ctx) {
             const { projectRoot, team: teamName } = params;
+            const project = new AlfredProject(projectRoot);
             if (!teamName) {
-                const teams = await listTeams(projectRoot);
+                const teams = await project.storage.listTeams();
                 if (teams.length === 0) {
+                    project.dispose();
                     return textResponse("No teams found in .alfred/teams/", { teams: [] });
                 }
+                project.dispose();
                 return textResponse(`Available teams:\n${teams.map((t) => `- ${t}`).join("\n")}`, { teams });
             }
             try {
-                const team = await loadTeam(projectRoot, teamName);
+                const team = await project.storage.loadTeam(teamName);
                 const members = team.members
                     .map((m) => `- **${m.id}** (${m.hat}) — ${m.role}\n  _${m.personality}_`)
                     .join("\n");
+                project.dispose();
                 return textResponse(`**${team.name}**: ${team.description}\n\n${members}`, { team });
             }
             catch {
+                project.dispose();
                 return errorResponse(`Team '${teamName}' not found`);
             }
         },
