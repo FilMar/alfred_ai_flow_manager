@@ -16,26 +16,27 @@ async function main() {
 
   try {
     const team = await project.storage.loadTeam(teamName);
+    const db = await project.getDatabase();
 
-    const debate = project.database.reloadDebate(debateId);
+    const debate = db.reloadDebate(debateId);
     if (!debate) {
       throw new Error(`Debate ${debateId} not found in database`);
     }
 
     const heartbeatInterval = setInterval(() => {
-      project.database.updateHeartbeat(debateId);
+      db.updateHeartbeat(debateId);
     }, 30_000);
 
     try {
-      project.database.updateHeartbeat(debateId);
-      await runFlow(debate.flow, team.members, debate, project.database);
+      db.updateHeartbeat(debateId);
+      await runFlow(debate.flow, team.members, debate, db);
       const closedAt = new Date().toISOString();
-      project.database.markDebateClosed(debateId, closedAt, "completed");
+      db.markDebateClosed(debateId, closedAt, "completed");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`Flow failed: ${message}`);
       const closedAt = new Date().toISOString();
-      project.database.markDebateClosed(debateId, closedAt, "failed");
+      db.markDebateClosed(debateId, closedAt, "failed");
     } finally {
       clearInterval(heartbeatInterval);
     }

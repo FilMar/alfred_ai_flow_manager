@@ -38,6 +38,7 @@ export class AlfredDatabase {
   private initSchema(): void {
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA synchronous = NORMAL;");
+    this.db.exec("PRAGMA busy_timeout = 5000;");
 
     const versionRow = this.db.prepare("PRAGMA user_version").get() as { user_version: number };
 
@@ -100,7 +101,7 @@ export class AlfredDatabase {
   // ─── Write ────────────────────────────────────────────────────────────────
 
   async withTransaction<T>(fn: () => T): Promise<T> {
-    this.db.exec("BEGIN IMMEDIATE");
+    this.db.exec("BEGIN");
     try {
       const result = fn();
       this.db.exec("COMMIT");

@@ -6,12 +6,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { AlfredProject as AlfredProjectType, Debate, Flow, Team } from "./types.js";
 import { HAT_IDS, TOOL_IDS, validateTeamName } from "./types.js";
 import { AlfredProject } from "./AlfredProject.js";
-import { AlfredStorage } from "./AlfredStorage.js";
-import { runFlow } from "./flow-runner.js";
 import { textResponse, errorResponse } from "./responses.js";
 
 // ─── Parametri comuni ────────────────────────────────────────────────────────
-
 /** `projectRoot` è richiesto da tutti i tool — definito una volta sola. */
 const projectRootParam = Type.String({
   description: "Absolute path to the project root containing .alfred/",
@@ -208,8 +205,9 @@ Example flows:
         createdAt: new Date().toISOString(),
       };
 
-      const { id: debateId, sequence } = project.database.createDebate(debateData);
-      
+      const db = await project.getDatabase();
+      const { id: debateId, sequence } = db.createDebate(debateData);
+
       try {
         // Spawn detached worker process
         const workerPath = path.join(projectRoot, "packages/alfred/dist/worker.js");
@@ -228,7 +226,7 @@ Example flows:
         });
 
         if (child.pid !== undefined) {
-          project.database.updateWorkerPid(debateId, child.pid);
+          db.updateWorkerPid(debateId, child.pid);
         }
         child.unref();
 
@@ -256,16 +254,17 @@ Example flows:
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       const { projectRoot, debateId } = params;
       const project = new AlfredProject(projectRoot);
+      const db = await project.getDatabase();
 
-      project.database.markStaleDebatesFailed();
+      db.markStaleDebatesFailed();
 
-      const metadata = project.database.getDebateMetadata(debateId);
+      const metadata = db.getDebateMetadata(debateId);
       if (!metadata) {
         project.dispose();
         return errorResponse(`Debate '${debateId}' not found.`);
       }
 
-      const entries = project.database.getDebateEntries(debateId);
+      const entries = db.getDebateEntries(debateId);
       const lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
 
       let statusText = `Status: **${metadata.status}**`;
@@ -302,8 +301,9 @@ Example flows:
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       const { projectRoot, debateId } = params;
       const project = new AlfredProject(projectRoot);
+      const db = await project.getDatabase();
 
-      const metadata = project.database.getDebateMetadata(debateId);
+      const metadata = db.getDebateMetadata(debateId);
       if (!metadata) {
         project.dispose();
         return errorResponse(`Debate '${debateId}' not found.`);
@@ -319,8 +319,8 @@ Example flows:
       let oldPid: number | null = null;
 
       try {
-        await project.database.withTransaction(() => {
-          const current = project.database.getDebateMetadata(debateId);
+        await db.withTransaction(() => {
+          const current = db.getDebateMetadata(debateId);
           if (!current) throw new Error("Debate disappeared");
 
           // If it's running and has a fresh heartbeat, don't resume.
@@ -332,9 +332,9 @@ Example flows:
           }
 
           oldPid = current.worker_pid ?? null;
-          project.database.updateDebateStatus(debateId, "running");
+          db.updateDebateStatus(debateId, "running");
           // Use -1 as a sentinel to indicate "resurrection in progress"
-          project.database.updateWorkerPid(debateId, -1);
+          db.updateWorkerPid(debateId, -1);
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -347,10 +347,10 @@ Example flows:
         try {
           // Signal 0 checks for process existence
           process.kill(oldPid, 0);
-          
+
           // Process is alive, try graceful then forced shutdown
           process.kill(oldPid, "SIGTERM");
-          
+
           await new Promise(resolve => setTimeout(resolve, 2000));
           try {
             process.kill(oldPid, 0);
@@ -361,7 +361,7 @@ Example flows:
         }
       }
 
-      const debate = project.database.reloadDebate(debateId);
+      const debate = db.reloadDebate(debateId);
       if (!debate) {
         project.dispose();
         return errorResponse(`Failed to reload debate state for '${debateId}'.`);
@@ -384,7 +384,7 @@ Example flows:
         });
 
         if (child.pid !== undefined) {
-          project.database.updateWorkerPid(debateId, child.pid);
+          db.updateWorkerPid(debateId, child.pid);
         }
         child.unref();
 
