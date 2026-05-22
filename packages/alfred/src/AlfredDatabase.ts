@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import { Database } from "bun:sqlite";
 import * as path from "node:path";
 import type { Debate, DebateEntry, DebateRow, DebateEntryRow } from "./types.js";
 
@@ -27,11 +27,11 @@ export interface DebateSummary {
 }
 
 export class AlfredDatabase {
-  private db: DatabaseSync;
+  private db: Database;
 
   constructor(private readonly root: string) {
     const dbPath = path.join(this.root, ".alfred", "alfred.db");
-    this.db = new DatabaseSync(dbPath);
+    this.db = new Database(dbPath);
     this.initSchema();
   }
 
