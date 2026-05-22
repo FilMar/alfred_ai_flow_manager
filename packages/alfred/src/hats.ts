@@ -14,6 +14,7 @@ export function buildSystemPrompt(
   personality: string,
   hatContent: string,
   thread: string,
+  maxToolCalls?: number,
 ): string {
   const parts = [
     `# Identità`,
@@ -23,6 +24,10 @@ export function buildSystemPrompt(
     `# Protocollo Cognitivo`,
     hatContent,
   ];
+
+  if (maxToolCalls !== undefined) {
+    parts.push(``, `# Vincoli Operativi`, `Puoi effettuare al massimo **${maxToolCalls}** tool call in questo turno.`);
+  }
 
   if (thread) {
     parts.push(``, `# Thread del Debate (contributi precedenti)`, thread);

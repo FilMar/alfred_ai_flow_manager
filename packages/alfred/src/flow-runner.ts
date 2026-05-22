@@ -26,6 +26,7 @@ async function invokeMember(
   member: TeamMember,
   debate: Debate,
   threadSnapshot: string,
+  projectRoot: string,
   signal?: AbortSignal,
 ): Promise<string> {
   let hat: string;
@@ -37,9 +38,9 @@ async function invokeMember(
       `${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  const systemPrompt = buildSystemPrompt(member.role, member.personality, hat, threadSnapshot);
-  
-  const result = await runAgentTurn(member, systemPrompt, debate.request.prompt, signal);
+  const systemPrompt = buildSystemPrompt(member.role, member.personality, hat, threadSnapshot, member.maxToolCalls);
+
+  const result = await runAgentTurn(member, systemPrompt, debate.request.prompt, signal, projectRoot);
   
   if (result.exitCode !== 0) {
     throw new Error(result.error || "Agent turn failed mysteriously");
@@ -97,6 +98,7 @@ async function runStep(
   debate: Debate,
   db: AlfredDatabase,
   completedSteps: Set<string>,
+  projectRoot: string,
   signal?: AbortSignal,
 ): Promise<void> {
   if (typeof step === "string") {
@@ -107,7 +109,7 @@ async function runStep(
 
     await executeAndPersistTurn(
       member,
-      () => invokeMember(member, debate, AlfredStorage.formatThread(debate), signal),
+      () => invokeMember(member, debate, AlfredStorage.formatThread(debate), projectRoot, signal),
       debate,
       db,
       flowStepId,
@@ -116,7 +118,6 @@ async function runStep(
   }
 
   if (Array.isArray(step)) {
-    const groupSize = step.length;
     const snapshot = AlfredStorage.formatThread(debate);
 
     await Promise.all(
@@ -129,7 +130,7 @@ async function runStep(
 
         await executeAndPersistTurn(
           member,
-          () => invokeMember(member, debate, snapshot, signal),
+          () => invokeMember(member, debate, snapshot, projectRoot, signal),
           debate,
           db,
           flowStepId,
@@ -150,7 +151,7 @@ async function runStep(
 
         await executeAndPersistTurn(
           member,
-          () => invokeMember(member, debate, AlfredStorage.formatThread(debate), signal),
+          () => invokeMember(member, debate, AlfredStorage.formatThread(debate), projectRoot, signal),
           debate,
           db,
           flowStepId,
@@ -166,16 +167,16 @@ export async function runFlow(
   members: TeamMember[],
   debate: Debate,
   db: AlfredDatabase,
+  projectRoot: string,
   signal?: AbortSignal,
 ): Promise<void> {
   const completedSteps = new Set(db.getCompletedFlowSteps(debate.id));
-  
+
   for (let i = 0; i < flow.length; i++) {
     if (signal?.aborted) break;
-    
-    // Update heartbeat to prevent markStaleDebatesFailed from killing long turns
+
     db.updateHeartbeat(debate.id);
-    
-    await runStep(flow[i], i, members, debate, db, completedSteps, signal);
+
+    await runStep(flow[i], i, members, debate, db, completedSteps, projectRoot, signal);
   }
 }

@@ -56,6 +56,8 @@ export class AlfredDatabase {
           status TEXT NOT NULL DEFAULT 'running',
           last_heartbeat TEXT,
           worker_pid INTEGER,
+          group_id TEXT,
+          type TEXT,
           UNIQUE(team, sequence),
           CHECK(created_at IS NOT NULL)
         );
@@ -124,8 +126,8 @@ export class AlfredDatabase {
       this.db.prepare(`
         INSERT INTO debates (
           id, team, sequence, flow, request_title, request_prompt,
-          created_at, closed_at, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          created_at, closed_at, status, group_id, type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
         debate.team,
@@ -136,6 +138,8 @@ export class AlfredDatabase {
         debate.createdAt,
         debate.closedAt ?? null,
         "running",
+        debate.groupId ?? null,
+        debate.type ?? null,
       );
 
       this.db.exec("COMMIT");
@@ -213,7 +217,7 @@ export class AlfredDatabase {
   getDebateMetadata(debateId: string): DebateRow | undefined {
     return this.db.prepare(`
       SELECT id, team, sequence, flow, request_title, request_prompt,
-             created_at, closed_at, status, last_heartbeat, worker_pid
+             created_at, closed_at, status, last_heartbeat, worker_pid, group_id, type
       FROM debates WHERE id = ?
     `).get(debateId) as DebateRow | undefined;
   }
@@ -311,7 +315,59 @@ export class AlfredDatabase {
     `).all(debateId).map(row => (row as any).flow_step_id);
   }
 
-  // ─── Lifecycle ────────────────────────────────────────────────────────────
+  getThread(debateId: string): DebateEntry[] | null {
+    const rows = this.db.prepare(`
+      SELECT author, timestamp, content, duration_ms, exit_code, error_message 
+      FROM debate_entries 
+      WHERE debate_id = ? 
+      ORDER BY id ASC
+    `).all(debateId) as unknown as DebateEntryRow[];
+
+    if (rows.length === 0) return null;
+
+    return rows.map(r => ({
+      author: r.author,
+      timestamp: r.timestamp,
+      content: r.content,
+      performance: r.duration_ms !== null ? {
+        duration_ms: r.duration_ms,
+        exit_code: r.exit_code ?? 0,
+        error: r.error_message
+      } : undefined
+    }));
+  }
+
+  getDebatesByGroup(groupId: string): DebateRow[] {
+    return this.db.prepare(`
+      SELECT id, team, sequence, flow, request_title, request_prompt,
+             created_at, closed_at, status, last_heartbeat, worker_pid, group_id, type
+      FROM debates WHERE group_id = ? ORDER BY created_at ASC
+    `).all(groupId) as unknown as DebateRow[];
+  }
+
+  getDebatesByFilter(filter: { team?: string, type?: string, limit?: number }): DebateRow[] {
+    let query = `SELECT id, team, sequence, flow, request_title, request_prompt,
+                 created_at, closed_at, status, last_heartbeat, worker_pid, group_id, type
+                 FROM debates WHERE 1=1`;
+    const params: any[] = [];
+
+    if (filter.team) {
+      query += ` AND team = ?`;
+      params.push(filter.team);
+    }
+    if (filter.type) {
+      query += ` AND type = ?`;
+      params.push(filter.type);
+    }
+
+    query += ` ORDER BY created_at DESC`;
+    if (filter.limit) {
+      query += ` LIMIT ?`;
+      params.push(filter.limit);
+    }
+
+    return this.db.prepare(query).all(...params) as unknown as DebateRow[];
+  }
 
   close(): void {
     this.db.close();

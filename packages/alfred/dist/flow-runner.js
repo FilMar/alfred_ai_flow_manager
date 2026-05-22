@@ -17,7 +17,7 @@ function getMember(id, members) {
  * Invoke the agent turn without persistence logic.
  * Responsibility: Prompt construction and LLM execution.
  */
-async function invokeMember(member, debate, threadSnapshot, signal) {
+async function invokeMember(member, debate, threadSnapshot, projectRoot, signal) {
     let hat;
     try {
         hat = await loadHat(member.hat);
@@ -26,8 +26,8 @@ async function invokeMember(member, debate, threadSnapshot, signal) {
         throw new Error(`Hat '${member.hat}' not found for member '${member.id}' (check hats/ directory). ` +
             `${err instanceof Error ? err.message : String(err)}`);
     }
-    const systemPrompt = buildSystemPrompt(member.role, member.personality, hat, threadSnapshot);
-    const result = await runAgentTurn(member, systemPrompt, debate.request.prompt, signal);
+    const systemPrompt = buildSystemPrompt(member.role, member.personality, hat, threadSnapshot, member.maxToolCalls);
+    const result = await runAgentTurn(member, systemPrompt, debate.request.prompt, signal, projectRoot);
     if (result.exitCode !== 0) {
         throw new Error(result.error || "Agent turn failed mysteriously");
     }
@@ -65,17 +65,16 @@ async function executeAndPersistTurn(member, turnTask, debate, db, flowStepId) {
     db.insertTurn(debate.id, entry, flowStepId);
     debate.thread.push(entry);
 }
-async function runStep(step, stepIndex, members, debate, db, completedSteps, signal) {
+async function runStep(step, stepIndex, members, debate, db, completedSteps, projectRoot, signal) {
     if (typeof step === "string") {
         const member = getMember(step, members);
         const flowStepId = `step_${stepIndex}_${member.id}`;
         if (completedSteps.has(flowStepId))
             return;
-        await executeAndPersistTurn(member, () => invokeMember(member, debate, AlfredStorage.formatThread(debate), signal), debate, db, flowStepId);
+        await executeAndPersistTurn(member, () => invokeMember(member, debate, AlfredStorage.formatThread(debate), projectRoot, signal), debate, db, flowStepId);
         completedSteps.add(flowStepId);
     }
     if (Array.isArray(step)) {
-        const groupSize = step.length;
         const snapshot = AlfredStorage.formatThread(debate);
         await Promise.all(step.map(async (s) => {
             if (typeof s !== "string")
@@ -84,7 +83,7 @@ async function runStep(step, stepIndex, members, debate, db, completedSteps, sig
             const flowStepId = `step_${stepIndex}_${member.id}`;
             if (completedSteps.has(flowStepId))
                 return;
-            await executeAndPersistTurn(member, () => invokeMember(member, debate, snapshot, signal), debate, db, flowStepId);
+            await executeAndPersistTurn(member, () => invokeMember(member, debate, snapshot, projectRoot, signal), debate, db, flowStepId);
             completedSteps.add(flowStepId);
         }));
     }
@@ -96,19 +95,18 @@ async function runStep(step, stepIndex, members, debate, db, completedSteps, sig
                 const flowStepId = `step_${stepIndex}_rt_${round}_${member.id}`;
                 if (completedSteps.has(flowStepId))
                     continue;
-                await executeAndPersistTurn(member, () => invokeMember(member, debate, AlfredStorage.formatThread(debate), signal), debate, db, flowStepId);
+                await executeAndPersistTurn(member, () => invokeMember(member, debate, AlfredStorage.formatThread(debate), projectRoot, signal), debate, db, flowStepId);
                 completedSteps.add(flowStepId);
             }
         }
     }
 }
-export async function runFlow(flow, members, debate, db, signal) {
+export async function runFlow(flow, members, debate, db, projectRoot, signal) {
     const completedSteps = new Set(db.getCompletedFlowSteps(debate.id));
     for (let i = 0; i < flow.length; i++) {
         if (signal?.aborted)
             break;
-        // Update heartbeat to prevent markStaleDebatesFailed from killing long turns
         db.updateHeartbeat(debate.id);
-        await runStep(flow[i], i, members, debate, db, completedSteps, signal);
+        await runStep(flow[i], i, members, debate, db, completedSteps, projectRoot, signal);
     }
 }

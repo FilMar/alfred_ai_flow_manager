@@ -2,7 +2,49 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import type { TeamMember, AgentTurnResult } from "./types.js";
+
+const MONOREPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+
+function resolveSkillPaths(skills: string[], projectRoot?: string): string[] {
+  const resolved: string[] = [];
+
+  for (const skillName of skills) {
+    let found = false;
+
+    if (projectRoot) {
+      const localPath = path.join(projectRoot, ".alfred", "skills", skillName, "SKILL.md");
+      if (fs.existsSync(localPath)) {
+        resolved.push(localPath);
+        found = true;
+        continue;
+      }
+    }
+
+    try {
+      const packagesDir = path.join(MONOREPO_ROOT, "packages");
+      const packages = fs.readdirSync(packagesDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name);
+
+      for (const pkg of packages) {
+        const skillPath = path.join(packagesDir, pkg, "skills", skillName, "SKILL.md");
+        if (fs.existsSync(skillPath)) {
+          resolved.push(skillPath);
+          found = true;
+          break;
+        }
+      }
+    } catch {}
+
+    if (!found) {
+      console.warn(`[alfred] Skill '${skillName}' not found, skipping.`);
+    }
+  }
+
+  return resolved;
+}
 
 /**
  * Limite in caratteri per il task inline via argv.
@@ -26,6 +68,7 @@ export async function runAgentTurn(
   systemPrompt: string,
   task: string,
   signal?: AbortSignal,
+  projectRoot?: string,
 ): Promise<AgentTurnResult> {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "alfred-turn-"));
   const startMs = Date.now();
@@ -34,13 +77,24 @@ export async function runAgentTurn(
     const promptFile = path.join(tempDir, "prompt.md");
     fs.writeFileSync(promptFile, systemPrompt, { mode: 0o600 });
 
+    const skillPaths = member.skills && member.skills.length > 0
+      ? resolveSkillPaths(member.skills, projectRoot)
+      : [];
+
     const args: string[] = [
       "-p",
       "--no-session",
       "--model", member.model,
       "--system-prompt", promptFile,
-      "--no-skills",
     ];
+
+    if (skillPaths.length > 0) {
+      for (const skillPath of skillPaths) {
+        args.push("--skill", skillPath);
+      }
+    } else {
+      args.push("--no-skills");
+    }
 
     if (member.tools.length > 0) {
       args.push("--tools", member.tools.join(","));

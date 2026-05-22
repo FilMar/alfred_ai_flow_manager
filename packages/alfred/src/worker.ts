@@ -29,7 +29,7 @@ async function main() {
 
     try {
       db.updateHeartbeat(debateId);
-      await runFlow(debate.flow, team.members, debate, db);
+      await runFlow(debate.flow, team.members, debate, db, projectRoot);
       const closedAt = new Date().toISOString();
       db.markDebateClosed(debateId, closedAt, "completed");
     } catch (err) {

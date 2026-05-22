@@ -47,10 +47,10 @@ Shift from "Save-at-End" to a "Write-per-Turn" model to ensure that every LLM co
 Decouple execution from the main process. Alfred becomes a background service that can be monitored and queried in real-time without blocking the user.
 
 ### Key Deliverables
-- [ ] **Asynchronous Orchestration (Detached Mode)**: 
+- [x] **Asynchronous Orchestration (Detached Mode)**: 
     - Implement a worker-based execution model where `alfred_run` kicks off the flow in a background process.
     - Transition from "Request-Wait-Response" to "Fire-and-Forget $\to$ Immediate ACK".
-- [ ] **Live Status Tracking**: 
+- [x] **Live Status Tracking**: 
     - Add `status` column to `debates` table (`running`, `completed`, `failed`, `paused`).
     - Create `alfred_status` tool to poll current progress and last active member.
 
@@ -85,25 +85,23 @@ Leverage the structured data in SQLite to transform Alfred's logs into a searcha
 ---
 
 ## 🧩 Phase 5: Advanced Member Features & Knowledge Pipeline
-**Status:** 📅 Planned
+**Status:** 🚧 In Progress
 
 ### Core Objectives
 Estendere le capacità dei singoli membri del team con controllo granulare su skill e tool budget, e introdurre la pipeline cognitiva a quattro agenti (Alfredo → Platone → Socrate → Aristotele).
 
 ### 5A — Infrastruttura member
 
-- [ ] **Skills resolver**: Resolver da nome skill a path file; passare via `--skill <path>` al subprocess pi. Il campo `skills?: string[]` in `TeamMember` è già definito in `types.ts`.
-- [ ] **`maxToolCalls` enforcement**: Iniettare il cap come istruzione nel system prompt del subprocess ("You may use at most N tool calls in this turn."). Il campo `maxToolCalls?: number` in `TeamMember` è già definito in `types.ts`.
+- [x] **Skills resolver**: Resolver da nome skill a path file; passare via `--skill <path>` al subprocess pi. Cerca in `<monorepoRoot>/packages/*/skills/<name>/SKILL.md` e `<projectRoot>/.alfred/skills/<name>/SKILL.md`.
+- [x] **`maxToolCalls` enforcement**: Iniettato come istruzione nel system prompt del subprocess via `buildSystemPrompt`. Il campo `maxToolCalls?: number` in `TeamMember` è ora attivo.
 
 ### 5B — Agenti della pipeline cognitiva
 
-- [ ] **Oracolo (Retrieval dal Third Brain)**: Skill read-only di ricerca nel Third Brain. Un membro del team può invocarla durante il suo turno per recuperare materiale rilevante già elaborato — pattern riconosciuti, decisioni passate, concetti collegati. Porta conoscenza accumulata dentro al debate invece di ricominciare da zero. Nessuna scrittura, nessuna sintesi: solo retrieval.
+- [x] **Oracolo (Consulente Strategico)**: Skill di orientamento iniziale. Trasforma la memoria semantica del Third Brain in briefing operativi per Alfredo. Identifica pattern, trappole e conoscenze pregresse per ottimizzare il casting del team. (Sostituisce il retrieval generico con un orientamento strategico).
 
+- [x] **Alfredo (Regista Operativo)**: Skill di orchestrazione pura. Gestisce il ciclo di vita del task tramite `groupId` e `type`. Coordina l'orientamento (Oracolo), l'esecuzione (Team) e la preservazione (Platone). Non esegue, delega. Minimalismo operativo assoluto.
 
-
-- [ ] **Alfredo (Regista Operativo)**: Skill di orchestrazione pura. Riceve la richiesta, classifica il tipo di lavoro, costruisce il team specialisti (Hat + Skill), coordina l'esecuzione e sintetizza il risultato. A chiusura task innesca automaticamente Platone. Può consultare `awesome-claude-skills` per individuare skill utili da proporre per un team member.
-
-- [ ] **Platone (Accrescitore della Memoria)**: Skill di estrazione valore post-task. Distingue tra conoscenza operativa (salva tutto nel Third Brain come materiale riusabile dall'AI) e conoscenza selettiva (filtra 1-2 concetti fertili/controintuitivi e li presenta in `ideas.md` come semi per la riflessione). Regole: atomicità, riusabilità, non banalità, focus sul "perché dell'idea" non sul contesto operativo.
+- [x] **Platone (Accrescitore della Memoria)**: Skill di estrazione valore post-task. Distilla concetti atomici e interessanti salvandoli nel Third Brain. Non crea file; propone 1-2 "Perle Cognitive" direttamente in chat per stimolare la riflessione dell'utente. Regole: atomicità, "perché" e interesse intrinseco.
 
 - [ ] **Socrate (Provocatore — Elenchos)**: Skill di attrito cognitivo. Prende un'idea in input, interroga il Third Brain cercando contraddizioni e lacune, formula la domanda scomoda senza mai chiudere il ragionamento al posto dell'utente. L'obiettivo è creare tensione che non possa essere risolta digitalmente ma richieda la consultazione dell'Antinet.
 
@@ -111,14 +109,14 @@ Estendere le capacità dei singoli membri del team con controllo granulare su sk
 
 ### 5C — Flussi operativi
 
-- [ ] **Flusso Diurno**: `Utente → Alfredo → [Team Specialisti] → Soluzione → Platone → Third Brain (+ seeds per l'utente)`
+- [x] **Flusso Diurno**: `Utente → Alfredo → Briefing (Oracolo) → Esecuzione (Team) → Preservazione (Platone) → Third Brain (+ Perle in chat)`
 
 - [ ] **Flusso Serale (loop)**: `Utente propone idea → Socrate interroga DB → domanda scomoda → Utente su Antinet → Aristotele integra risposta nel DB → Socrate verifica tensione → (ripeti)`
 
 ---
 
 ## 📈 Definition of Done (DoD)
-A phase is considered **Complete** only when:
+A phase is considered **Complete** only la when:
 1. Code is implemented and merged.
 2. `pi-devs` (Cleaner/Verifier) have confirmed the absence of redundancies and regressions.
 3. `pi-quality-guard` (Security/Perf/Judge) has issued a formal **APPROVATO** verdict.

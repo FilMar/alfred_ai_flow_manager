@@ -120,6 +120,10 @@ export interface Debate {
   sequence: number;
   /** Name of the team involved */
   team: string;
+  /** Logical group linking briefing, execution and preservation steps */
+  groupId?: string;
+  /** Type of run: briefing, execution, or preservation */
+  type?: "briefing" | "execution" | "preservation";
   flow: Flow;
   request: DebateRequest;
   thread: DebateEntry[];
@@ -155,6 +159,8 @@ export interface DebateRow {
   status: string;
   last_heartbeat: string | null;
   worker_pid: number | null;
+  group_id: string | null;
+  type: string | null;
 }
 
 export interface DebateEntryRow {

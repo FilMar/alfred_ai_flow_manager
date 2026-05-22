@@ -5,7 +5,7 @@ const HATS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "../hat
 export async function loadHat(hatId) {
     return fs.readFile(path.join(HATS_DIR, `${hatId}.md`), "utf-8");
 }
-export function buildSystemPrompt(role, personality, hatContent, thread) {
+export function buildSystemPrompt(role, personality, hatContent, thread, maxToolCalls) {
     const parts = [
         `# Identità`,
         `**Ruolo:** ${role}`,
@@ -14,6 +14,9 @@ export function buildSystemPrompt(role, personality, hatContent, thread) {
         `# Protocollo Cognitivo`,
         hatContent,
     ];
+    if (maxToolCalls !== undefined) {
+        parts.push(``, `# Vincoli Operativi`, `Puoi effettuare al massimo **${maxToolCalls}** tool call in questo turno.`);
+    }
     if (thread) {
         parts.push(``, `# Thread del Debate (contributi precedenti)`, thread);
     }
