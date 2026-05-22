@@ -16,7 +16,6 @@
   },
   "scripts": {
     "build": "npm --workspaces run build",
-    "setup": "npm install && npm run build && for d in packages/*/; do pi install \"./$d\"; done",
-    "postinstall": "npm --workspaces run build"
+    "setup": "npm install && npm run build && for d in packages/*/; do pi install \"./$d\"; done"
   }
 }

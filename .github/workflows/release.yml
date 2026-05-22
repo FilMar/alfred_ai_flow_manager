@@ -1,0 +1,34 @@
+name: Build and publish release branch
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build all packages
+        run: npm run build
+
+      - name: Push to release branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan release
+          git add -f packages/alfred/dist packages/third-brain/dist
+          git add package.json package-lock.json packages/alfred/package.json packages/third-brain/package.json
+          git commit -m "release: build from ${GITHUB_SHA::7}"
+          git push origin release --force
