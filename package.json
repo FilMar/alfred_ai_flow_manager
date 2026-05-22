@@ -4,8 +4,19 @@
   "workspaces": [
     "packages/*"
   ],
+  "pi": {
+    "extensions": [
+      "./packages/alfred/dist/index.js",
+      "./packages/third-brain/dist/index.js"
+    ],
+    "skills": [
+      "./packages/alfred/skills",
+      "./packages/third-brain/skills"
+    ]
+  },
   "scripts": {
     "build": "npm --workspaces run build",
-    "setup": "npm install && npm run build && for d in packages/*/; do pi install \"./$d\"; done"
+    "setup": "npm install && npm run build && for d in packages/*/; do pi install \"./$d\"; done",
+    "postinstall": "npm --workspaces run build"
   }
 }
