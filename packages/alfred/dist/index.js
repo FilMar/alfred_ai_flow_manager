@@ -1,6 +1,8 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, openSync } from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+const WORKER_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "worker.js");
 import { Type } from "typebox";
 import { HAT_IDS, TOOL_IDS, validateTeamName } from "./types.js";
 import { AlfredProject } from "./AlfredProject.js";
@@ -35,6 +37,19 @@ const TeamMemberSchema = Type.Object({
     skills: Type.Optional(Type.Array(Type.String())),
     maxToolCalls: Type.Optional(Type.Number()),
 });
+function spawnWorker(projectRoot, debateId, workerArgs) {
+    const logsDir = path.join(projectRoot, ".alfred", "logs");
+    mkdirSync(logsDir, { recursive: true });
+    const logPath = path.join(logsDir, `${debateId}.log`);
+    const logFd = openSync(logPath, "a");
+    const child = spawn("node", [WORKER_PATH, ...workerArgs], {
+        cwd: projectRoot,
+        detached: true,
+        stdio: ["ignore", logFd, logFd],
+    });
+    child.unref();
+    return child;
+}
 function slugifyDebateTitle(task) {
     return task
         .slice(0, 40)
@@ -182,25 +197,13 @@ Example flows:
             const db = await project.getDatabase();
             const { id: debateId, sequence } = db.createDebate(debateData);
             try {
-                const workerPath = path.join(projectRoot, "packages/alfred/dist/worker.js");
-                const args = [
-                    projectRoot,
-                    teamName,
-                    debateId,
-                    task,
-                    JSON.stringify(flow),
-                ];
-                const child = spawn("node", [workerPath, ...args], {
-                    cwd: projectRoot,
-                    detached: true,
-                    stdio: "ignore",
-                });
+                const args = [projectRoot, teamName, debateId, task, JSON.stringify(flow)];
+                const child = spawnWorker(projectRoot, debateId, args);
                 if (child.pid !== undefined) {
                     db.updateWorkerPid(debateId, child.pid);
                 }
-                child.unref();
                 project.dispose();
-                return textResponse(`Finito! Debate initiated. ID: ${debateId}.`, { debateId });
+                return textResponse(`Debate initiated. ID: ${debateId}. Log: .alfred/logs/${debateId}.log`, { debateId });
             }
             catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
@@ -413,25 +416,13 @@ Example flows:
                 return errorResponse(`Failed to reload debate state for '${debateId}'.`);
             }
             try {
-                const workerPath = path.join(projectRoot, "packages/alfred/dist/worker.js");
-                const args = [
-                    projectRoot,
-                    metadata.team,
-                    debateId,
-                    metadata.request_prompt,
-                    JSON.stringify(debate.flow),
-                ];
-                const child = spawn("node", [workerPath, ...args], {
-                    cwd: projectRoot,
-                    detached: true,
-                    stdio: "ignore",
-                });
+                const args = [projectRoot, metadata.team, debateId, metadata.request_prompt, JSON.stringify(debate.flow)];
+                const child = spawnWorker(projectRoot, debateId, args);
                 if (child.pid !== undefined) {
                     db.updateWorkerPid(debateId, child.pid);
                 }
-                child.unref();
                 project.dispose();
-                return textResponse(`Resurrecting debate ${debateId} using surgical resume protocol...`, { debateId });
+                return textResponse(`Resurrecting debate ${debateId} using surgical resume protocol... Log: .alfred/logs/${debateId}.log`, { debateId });
             }
             catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
