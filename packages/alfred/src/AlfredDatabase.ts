@@ -332,7 +332,7 @@ export class AlfredDatabase {
       performance: r.duration_ms !== null ? {
         duration_ms: r.duration_ms,
         exit_code: r.exit_code ?? 0,
-        error: r.error_message
+        error: r.error_message ?? undefined
       } : undefined
     }));
   }

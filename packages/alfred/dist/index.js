@@ -147,9 +147,15 @@ Example flows:
             team: Type.String({ description: "Team name (must exist in .alfred/teams/)" }),
             flow: Type.Array(FlowStepSchema, { description: "Execution flow descriptor" }),
             task: Type.String({ description: "The task or question for the team" }),
+            groupId: Type.Optional(Type.String({ description: "Logical group linking briefing, execution and preservation steps" })),
+            type: Type.Optional(Type.Union([
+                Type.Literal("briefing"),
+                Type.Literal("execution"),
+                Type.Literal("preservation")
+            ], { description: "Type of run: briefing, execution, or preservation" })),
         }),
         async execute(_id, params, _signal, _onUpdate, _ctx) {
-            const { projectRoot, team: teamName, task } = params;
+            const { projectRoot, team: teamName, task, groupId, type } = params;
             const flow = params.flow;
             const project = new AlfredProject(projectRoot);
             let team;
@@ -164,6 +170,8 @@ Example flows:
             const debateData = {
                 team: teamName,
                 flow,
+                groupId,
+                type,
                 request: {
                     title,
                     prompt: task,
@@ -174,7 +182,6 @@ Example flows:
             const db = await project.getDatabase();
             const { id: debateId, sequence } = db.createDebate(debateData);
             try {
-                // Spawn detached worker process
                 const workerPath = path.join(projectRoot, "packages/alfred/dist/worker.js");
                 const args = [
                     projectRoot,
@@ -193,7 +200,7 @@ Example flows:
                 }
                 child.unref();
                 project.dispose();
-                return textResponse(`Debate initiated. ID: ${debateId}. Use \`alfred_status\` to track progress.`, { debateId });
+                return textResponse(`Finito! Debate initiated. ID: ${debateId}.`, { debateId });
             }
             catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
@@ -202,45 +209,145 @@ Example flows:
             }
         },
     });
+    // ─── alfred_get ────────────────────────────────────────────────────────────
+    pi.registerTool({
+        name: "alfred_get",
+        label: "Alfred Get",
+        description: "Retrieve specific information from the Alfred persistence layer. Supports fetching full threads, mission groups, or filtered lists of debates.",
+        parameters: Type.Object({
+            projectRoot: projectRootParam,
+            filter: Type.Object({
+                debateId: Type.Optional(Type.String({ description: "Retrieve the full thread of a specific debate." })),
+                groupId: Type.Optional(Type.String({ description: "Retrieve all debates linked to a logical mission group." })),
+                team: Type.Optional(Type.String({ description: "Retrieve recent debates for a specific team." })),
+                type: Type.Optional(Type.Union([
+                    Type.Literal("briefing"),
+                    Type.Literal("execution"),
+                    Type.Literal("preservation")
+                ], { description: "Retrieve debates of a specific type." })),
+                limit: Type.Optional(Type.Number({ description: "Limit the number of returned records. Default: 10." })),
+            }, { description: "Search filter. Use only one primary identifier (debateId or groupId) for precise results." }),
+        }),
+        async execute(_id, params, _signal, _onUpdate, _ctx) {
+            const { projectRoot, filter } = params;
+            const project = new AlfredProject(projectRoot);
+            const db = await project.getDatabase();
+            try {
+                if (filter.debateId) {
+                    const thread = db.getThread(filter.debateId);
+                    if (!thread) {
+                        project.dispose();
+                        return errorResponse(`Debate '${filter.debateId}' not found or has no entries.`);
+                    }
+                    const formattedThread = thread
+                        .map((e, i) => `${i + 1}. [${e.author}] ${e.content}`)
+                        .join("\n\n");
+                    project.dispose();
+                    return textResponse(`**Thread for ${filter.debateId}**\n\n${formattedThread}`, { thread });
+                }
+                if (filter.groupId) {
+                    const group = db.getDebatesByGroup(filter.groupId);
+                    if (group.length === 0) {
+                        project.dispose();
+                        return errorResponse(`No debates found for group '${filter.groupId}'.`);
+                    }
+                    const missionOutline = group
+                        .map(d => `- ${d.id} [${d.type || "unknown"}] | ${d.request_title}`)
+                        .join("\n");
+                    project.dispose();
+                    return textResponse(`**Mission Group: ${filter.groupId}**\n\n${missionOutline}`, { group });
+                }
+                const debates = db.getDebatesByFilter({
+                    team: filter.team,
+                    type: filter.type,
+                    limit: filter.limit || 10
+                });
+                if (debates.length === 0) {
+                    project.dispose();
+                    return textResponse("No matching debates found.");
+                }
+                const list = debates
+                    .map(d => `- ${d.id} | ${d.team} | ${d.type || "execution"} | ${d.request_title}`)
+                    .join("\n");
+                project.dispose();
+                return textResponse(`**Retrieved Debates**\n\n${list}`, { debates });
+            }
+            catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                project.dispose();
+                return errorResponse(`Failed to retrieve data: ${message}`);
+            }
+        },
+    });
     // ─── alfred_status ───────────────────────────────────────────────────────
     pi.registerTool({
         name: "alfred_status",
         label: "Alfred Status",
-        description: "Check the current status of a debate. Returns status and active member if running.",
+        description: "Check the status of one or all debates. If debateId is omitted, it lists all active processes (Radar Mode). If provided, it shows detailed telemetry for that specific debate (Deep Dive Mode).",
         parameters: Type.Object({
             projectRoot: projectRootParam,
-            debateId: Type.String({ description: "The debate ID to check" }),
+            debateId: Type.Optional(Type.String({ description: "The debate ID to check. Omit for global radar view." })),
         }),
         async execute(_id, params, _signal, _onUpdate, _ctx) {
             const { projectRoot, debateId } = params;
             const project = new AlfredProject(projectRoot);
             const db = await project.getDatabase();
             db.markStaleDebatesFailed();
+            if (!debateId) {
+                const allTeams = await project.storage.listTeams();
+                const activeDebates = [];
+                for (const team of allTeams) {
+                    const teamDebates = db.getTeamDebates(team);
+                    const running = teamDebates.filter(d => d.closed_at === null);
+                    activeDebates.push(...running);
+                }
+                if (activeDebates.length === 0) {
+                    project.dispose();
+                    return textResponse("No active debates currently running or paused.");
+                }
+                let radarOutput = "**Alfred Global Radar**\n\n";
+                radarOutput += "| ID | Team | Title | Entries |\n|---|---|---|---|\n";
+                radarOutput += activeDebates
+                    .map(d => `| ${d.id} | ${d.team} | ${d.title} | ${d.entry_count} |`)
+                    .join("\n");
+                radarOutput += "\n\nUse \`alfred_get({ debateId: '...' })\` for thread retrieval or \`alfred_resume\` for failed runs.";
+                project.dispose();
+                return textResponse(radarOutput);
+            }
             const metadata = db.getDebateMetadata(debateId);
             if (!metadata) {
                 project.dispose();
                 return errorResponse(`Debate '${debateId}' not found.`);
             }
             const entries = db.getDebateEntries(debateId);
+            const stats = db.getMemberStats(debateId);
             const lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
-            let statusText = `Status: **${metadata.status}**`;
-            if (metadata.status === "running" && lastEntry) {
-                statusText += `\nActive Member: **${lastEntry.author}**`;
-                if (metadata.last_heartbeat) {
-                    statusText += `\nLast Heartbeat: ${metadata.last_heartbeat}`;
+            let deepDive = `**Telemetry for ${debateId}**\n`;
+            deepDive += `Status: \`${metadata.status.toUpperCase()}\` | Team: \`${metadata.team}\`\n`;
+            deepDive += `Start: ${metadata.created_at}${metadata.closed_at ? ` → End: ${metadata.closed_at}` : ''}\n`;
+            if (metadata.status === "running") {
+                deepDive += `\n**Heartbeat**: ${metadata.last_heartbeat || "N/A"}\n`;
+                deepDive += `**Worker PID**: ${metadata.worker_pid || "Unknown"}\n`;
+                if (lastEntry) {
+                    deepDive += `**Last Active**: ${lastEntry.author}\n`;
+                    deepDive += `**Last Output**: _"${lastEntry.content.slice(0, 100)}${lastEntry.content.length > 100 ? '...' : ''}"_\n`;
                 }
-                if (metadata.worker_pid) {
-                    statusText += `\nWorker PID: ${metadata.worker_pid}`;
-                }
-            }
-            else if (metadata.status === "completed") {
-                statusText += `\nCompleted at: ${metadata.closed_at}`;
             }
             else if (metadata.status === "failed") {
-                statusText += `\nFailed at: ${metadata.closed_at}`;
+                deepDive += `\n**Crashed**: This debate terminated unexpectedly.\n`;
+                deepDive += `**Action**: Use \`alfred_resume({ debateId: '${debateId}' })\` to recover from the last stable step.`;
+            }
+            else if (metadata.status === "completed") {
+                deepDive += `\n**Finished**: Result is ready for synthesis.`;
+            }
+            if (entries.length > 0) {
+                deepDive += `\n\n**Team Performance**:\n`;
+                deepDive += stats
+                    .map(s => `- ${s.author}: ${s.turns} turns | avg ${s.avg_duration_ms}ms | ${s.error_count} errors`)
+                    .join("\n");
             }
             project.dispose();
-            return textResponse(statusText, { status: metadata.status });
+            return textResponse(deepDive, { status: metadata.status });
         },
     });
     // ─── alfred_resume ──────────────────────────────────────────────────────────
@@ -265,24 +372,20 @@ Example flows:
                 project.dispose();
                 return errorResponse(`Debate '${debateId}' is already completed and cannot be resumed.`);
             }
-            // ─── Concurrency Guard ─────────────────────────────────────────────────
-            // To prevent multiple resurrection workers, we use an atomic status update.
             let oldPid = null;
             try {
                 await db.withTransaction(() => {
                     const current = db.getDebateMetadata(debateId);
                     if (!current)
                         throw new Error("Debate disappeared");
-                    // If it's running and has a fresh heartbeat, don't resume.
                     if (current.status === "running" && current.last_heartbeat) {
                         const lastHb = new Date(current.last_heartbeat).getTime();
-                        if (Date.now() - lastHb < 60 * 1000) { // 1 minute threshold
+                        if (Date.now() - lastHb < 60 * 1000) {
                             throw new Error("Debate is currently active and healthy. Use alfred_status to monitor.");
                         }
                     }
                     oldPid = current.worker_pid ?? null;
                     db.updateDebateStatus(debateId, "running");
-                    // Use -1 as a sentinel to indicate "resurrection in progress"
                     db.updateWorkerPid(debateId, -1);
                 });
             }
@@ -291,12 +394,9 @@ Example flows:
                 project.dispose();
                 return errorResponse(`Concurrency guard: ${message}`);
             }
-            // ─── Zombie Killer ────────────────────────────────────────────────────
             if (oldPid && oldPid !== -1) {
                 try {
-                    // Signal 0 checks for process existence
                     process.kill(oldPid, 0);
-                    // Process is alive, try graceful then forced shutdown
                     process.kill(oldPid, "SIGTERM");
                     await new Promise(resolve => setTimeout(resolve, 2000));
                     try {
@@ -305,9 +405,7 @@ Example flows:
                     }
                     catch { }
                 }
-                catch (e) {
-                    // ESRCH: process doesn't exist, no action needed
-                }
+                catch (e) { }
             }
             const debate = db.reloadDebate(debateId);
             if (!debate) {

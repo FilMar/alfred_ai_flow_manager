@@ -500,7 +500,7 @@ Example flows:
         });
 
         if (child.pid !== undefined) {
-          db.updateWorker_pid = db.updateWorkerPid(debateId, child.pid);
+          db.updateWorkerPid(debateId, child.pid);
         }
         child.unref();
 
