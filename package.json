@@ -3,5 +3,9 @@
   "private": true,
   "workspaces": [
     "packages/*"
-  ]
+  ],
+  "scripts": {
+    "build": "npm --workspaces run build",
+    "setup": "npm install && npm run build && for d in packages/*/; do pi install \"./$d\"; done"
+  }
 }
