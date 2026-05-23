@@ -113,6 +113,38 @@ Estendere le capacità dei singoli membri del team con controllo granulare su sk
 
 ---
 
+## 🔧 Phase 6: Hardening & Observability
+**Status:** 🔴 Not Started
+
+### Core Objectives
+Eliminare race condition, boundary async/sync errate e failure mode silenziosi emersi dall'analisi comparativa con pi-crew. Aggiungere worktree isolation e retry policy per portare Alfred a parità operativa con sistemi multi-agent di produzione.
+
+### 6A — Bug critici
+
+- [ ] **Fix race condition parallel** (`flow-runner.ts:132`): `Promise.all()` + `debate.thread.push()` senza ordinamento garantito. Raccogliere tutti i risultati prima di pushare in ordine deterministico nel thread.
+- [ ] **Fix `withTransaction` async/sync** (`AlfredDatabase.ts:106`): Marcato `async` ma esegue codice sincrono — la transazione si chiude prima dell'await. Rimuovere `async`, firma `withTransaction<T>(fn: () => T): T`.
+- [ ] **Subprocess timeout** (`spawn.ts`): Nessun timeout su `runAgentTurn`. Se `pi` si blocca, il worker si blocca per sempre. Aggiungere `timeoutMs` opzionale via `AbortController` + `setTimeout`.
+
+### 6B — Affidabilità
+
+- [ ] **Heartbeat zombie** (`worker.ts:26`): `clearInterval` solo nel `finally`, non dipendente dalla chiusura normale. Aggiungere `AbortController` passato a `runFlow` per garantire cleanup.
+- [ ] **Flow step validation** (`types.ts`): Array annidati `[["a"], [["b"]]]` parsano ma esplodono in `runStep`. Validare schema prima di spawnare il worker in `alfred_run`.
+- [ ] **Skill resolution fail-fast** (`spawn.ts:45`): Skill mancante = `console.warn` silenzioso, agente parte senza skill. Throw se una skill non si risolve, oppure persistere in `DebateEntry.performance.error`.
+
+### 6C — Feature parity vs pi-crew
+
+- [ ] **Worktree isolation** (opzionale): Campo `worktree?: boolean` su `TeamMember`. Se attivo, ogni agente lavora su un branch git isolato via `EnterWorktree`. Elimina clobbering su task di coding paralleli.
+- [ ] **Retry policy** (opzionale): Campo `maxRetries?: number` su `TeamMember` o su flow step. Retry automatico su errori transitori (rate limit, timeout rete) prima di triggherare il circuit breaker.
+- [ ] **Structured logging**: Sostituire `console.error` sparsi con log JSON su stderr. Minimo: `{ level, timestamp, debateId, memberId, message }` per ogni turn e errore.
+
+### 6D — Test coverage
+
+- [ ] **Parallel ordering test**: Vitest suite per `flow-runner.ts` con DB mockato. Verificare che output paralleli siano sempre appesi al thread in ordine deterministico.
+- [ ] **Resume da stato stale**: Test per doppio-spawn race in `alfred_resume`.
+- [ ] **Transaction rollback**: Verificare che `withTransaction` faccia rollback corretto su eccezione.
+
+---
+
 ## 📈 Definition of Done (DoD)
 A phase is considered **Complete** only la when:
 1. Code is implemented and merged.
