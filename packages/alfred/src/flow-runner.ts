@@ -64,6 +64,7 @@ async function executeAndPersistTurn(
   let output: string;
   let exitCode: number = 0;
   let errorMessage: string | undefined;
+  let infraError: Error | undefined;
 
   try {
     output = await turnTask();
@@ -71,6 +72,8 @@ async function executeAndPersistTurn(
     exitCode = 1;
     errorMessage = err instanceof Error ? err.message : String(err);
     output = `[Error: ${errorMessage}]`;
+    // Preserve the original error to re-throw after persisting for audit trail.
+    infraError = err instanceof Error ? err : new Error(errorMessage);
   }
 
   const end = performance.now();
@@ -89,6 +92,12 @@ async function executeAndPersistTurn(
 
   db.insertTurn(debate.id, entry, flowStepId);
   debate.thread.push(entry);
+
+  // Circuit breaker: halt the flow after persisting the error for audit trail.
+  // worker.ts catches this and calls markDebateClosed(..., "failed").
+  if (infraError) {
+    throw infraError;
+  }
 }
 
 async function runStep(

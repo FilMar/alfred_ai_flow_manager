@@ -40,19 +40,17 @@ Shift from "Save-at-End" to a "Write-per-Turn" model to ensure that every LLM co
 - [x] **Parallel Snapshots**: Implement thread snapshotting before spawning parallel groups to ensure consistent context for all members.
 - [x] **Sync-to-Memory**: Maintain `debate.thread` in RAM as a volatile view, synchronized with the DB as the single source of truth.
 
-## ⚡ Phase 2B: The Freedom Engine (Async Execution)
+## ⚡ Phase 2C: The Circuit Breaker (Execution Reliability)
 **Status:** ✅ Completed
 
 ### Core Objectives
-Decouple execution from the main process. Alfred becomes a background service that can be monitored and queried in real-time without blocking the user.
+Prevent "cascading failures" where runtime errors (e.g., model not found, tool crash) are treated as valid content and passed to subsequent agents, leading to cognitive hallucinations and systemic noise.
 
 ### Key Deliverables
-- [x] **Asynchronous Orchestration (Detached Mode)**: 
-    - Implement a worker-based execution model where `alfred_run` kicks off the flow in a background process.
-    - Transition from "Request-Wait-Response" to "Fire-and-Forget $\to$ Immediate ACK".
-- [x] **Live Status Tracking**: 
-    - Add `status` column to `debates` table (`running`, `completed`, `failed`, `paused`).
-    - Create `alfred_status` tool to poll current progress and last active member.
+- [x] **Fail-Fast Mechanism**: `executeAndPersistTurn` in `flow-runner.ts` now re-throws infrastructure errors after persisting them, halting the flow immediately.
+- [x] **Immediate Halt**: `worker.ts` catches the propagated error and calls `markDebateClosed(..., "failed")` — debate never advances past the failed member.
+- [x] **Error Propagation**: Error entry is persisted to DB for audit trail with full stderr detail; the flow error message identifies which member broke the chain.
+- [x] **Circuit Breaker Pattern**: Debate is marked `failed` in DB — `alfred_resume` requires explicit intervention before re-running.
 
 ---
 
