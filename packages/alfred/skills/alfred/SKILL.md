@@ -132,8 +132,8 @@ Non dare `bash` se la skill non ne ha bisogno. Non dare `write`/`edit` a un memb
 | Modello | Quando usarlo |
 |---|---|
 | `kimi-k2.6:cloud` | Pensiero complesso, contesto molto ampio, analisi multi-documento, ragionamento strategico |
-| `minimax-m2.5:cloud` | Coding, logica, debug, task tecnici precisi |
-| `qwen3.5:397b-cloud` | Ragionamento generale, scrittura, sintesi, sviluppo concettuale |
+| `deepseek-v4-flash:cloud` | Coding, logica, debug, task tecnici precisi |
+| `qwen3.5:cloud` | Ragionamento generale, scrittura, sintesi, sviluppo concettuale |
 
 Scegli il modello in base al compito del membro, non usare lo stesso per tutti.
 
