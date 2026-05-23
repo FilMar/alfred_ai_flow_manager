@@ -4,34 +4,36 @@ import * as path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 const MONOREPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+function buildSkillSearchDirs(projectRoot) {
+    const dirs = [];
+    if (projectRoot) {
+        dirs.push(path.join(projectRoot, ".pi", "skills"));
+        dirs.push(path.join(projectRoot, ".alfred", "skills"));
+    }
+    dirs.push(path.join(os.homedir(), ".pi", "agent", "skills"));
+    try {
+        const packagesDir = path.join(MONOREPO_ROOT, "packages");
+        const packages = fs.readdirSync(packagesDir, { withFileTypes: true })
+            .filter((d) => d.isDirectory())
+            .map((d) => d.name);
+        for (const pkg of packages) {
+            dirs.push(path.join(packagesDir, pkg, "skills"));
+        }
+    }
+    catch { }
+    return dirs;
+}
 function resolveSkillPaths(skills, projectRoot) {
+    const searchDirs = buildSkillSearchDirs(projectRoot);
     const resolved = [];
     for (const skillName of skills) {
-        let found = false;
-        if (projectRoot) {
-            const localPath = path.join(projectRoot, ".alfred", "skills", skillName, "SKILL.md");
-            if (fs.existsSync(localPath)) {
-                resolved.push(localPath);
-                found = true;
-                continue;
-            }
+        const skillPath = searchDirs
+            .map((dir) => path.join(dir, skillName, "SKILL.md"))
+            .find((p) => fs.existsSync(p));
+        if (skillPath) {
+            resolved.push(skillPath);
         }
-        try {
-            const packagesDir = path.join(MONOREPO_ROOT, "packages");
-            const packages = fs.readdirSync(packagesDir, { withFileTypes: true })
-                .filter((d) => d.isDirectory())
-                .map((d) => d.name);
-            for (const pkg of packages) {
-                const skillPath = path.join(packagesDir, pkg, "skills", skillName, "SKILL.md");
-                if (fs.existsSync(skillPath)) {
-                    resolved.push(skillPath);
-                    found = true;
-                    break;
-                }
-            }
-        }
-        catch { }
-        if (!found) {
+        else {
             console.warn(`[alfred] Skill '${skillName}' not found, skipping.`);
         }
     }

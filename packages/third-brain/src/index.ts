@@ -4,7 +4,7 @@ import type { Note, NoteUpdate, SearchOptions } from "./types.js";
 import { noteToText } from "./types.js";
 import { checkHealth, fixCommands, getHealthCached, missingServices, warnIfUnhealthy } from "./health.js";
 import { embed } from "./embed.js";
-import { ensureCollection, upsert, search, updateNote, randomNoteId, noteId } from "./qdrant.js";
+import { ensureCollection, upsert, search, updateNote, randomNoteId, noteId, getByIds } from "./qdrant.js";
 import { NoteTypeSchema, RelationTypeSchema } from "./schemas.js";
 import { textResponse, errorResponse } from "./responses.js";
 
@@ -62,6 +62,15 @@ export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
 
       // Correlato casuale seed
       const seedId = await randomNoteId();
+      let seedContent = "";
+
+      if (seedId) {
+        const notes = await getByIds([seedId]);
+        if (notes.length > 0) {
+          const sn = notes[0];
+          seedContent = `\n\n--- Seed Serendipity ---\nID: ${seedId}\nWhat: ${sn.what}\nWhy: ${sn.why}\n-----------------------`;
+        }
+      }
 
       const note: Note = {
         id,
@@ -69,7 +78,7 @@ export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
         why: params.why,
         what: params.what,
         tags: params.tags ?? [],
-        kind: params.kind ?? "osservazione",
+        kind: params.kind ?? "dato",
         ...(params.source && { source: params.source }),
         refs: seedId
           ? [{ id: seedId, reason: "correlato iniziale — connessione da esplorare" }]
@@ -81,7 +90,7 @@ export default function registerThirdBrainExtension(pi: ExtensionAPI): void {
       await upsert(note, vector);
 
       const seedMsg = seedId
-        ? `Correlato seed: ${seedId}`
+        ? `Correlato seed: ${seedId}${seedContent}\n\n[SFIDA DI SERENDIPITÀ]: Platone, inventa un ponte creativo, inatteso o ipotetico tra questa nuova nota e il seed. Sostituisci il motivo generico con una correlazione che stimoli il pensiero laterale.`
         : "Prima nota — nessun correlato seed disponibile.";
 
       return textResponse(`Nota salvata.\nID: ${id}\n${seedMsg}`, { note });

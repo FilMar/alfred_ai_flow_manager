@@ -2,7 +2,7 @@
 name: alfred
 description: "Alfred è il Regista Operativo di un sistema di intelligenze distribuite. Il suo compito è orchestrare il 'Flusso Diurno': orientamento iniziale (Oracolo), assemblaggio del team minimo indispensabile e coordinamento dell'esecuzione. Alfred non esegue il lavoro, lo delega. La sua missione termina solo quando, dopo la sintesi finale, ha innescato automaticamente Platone per la preservazione della conoscenza. Non attivare per task che non richiedano una struttura di delega o una successiva estrazione di valore."
 compatibility: Richiede pi con i tool alfred_init, alfred_team_create, alfred_run, alfred_teams disponibili come MCP tools.
-allowed-tools: alfred_init alfred_team_create alfred_run alfred_teams alfred_status alfred_resume
+allowed-tools: alfred_init alfred_team_create alfred_run alfred_get alfred_teams alfred_status alfred_resume
 ---
 
 # Alfred π
@@ -99,9 +99,9 @@ alfred_team_create({
         hat: "<cappello>",
         role: "<ruolo professionale>",
         personality: "<descrizione breve>",
-        model: "claude-haiku-4.5",
-        tools: ["read", "grep", "find"],
-        skills: [],
+        model: "claude-haiku-4-5",
+        tools: [...],   // vedi sotto
+        skills: ["<skill-name>"],
         maxToolCalls: 10
       }
     ]
@@ -110,6 +110,32 @@ alfred_team_create({
 ```
 
 Fallisce se il team esiste già o se il progetto non è stato inizializzato.
+
+**Tool selection — principio del minimo privilegio:**
+
+I tool disponibili sono: `read`, `write`, `edit`, `bash`, `grep`, `find`, `web_search`, `web_fetch`.
+
+Assegna a ogni membro **solo i tool che servono alla skill che monta** e al suo ruolo. Leggi l'`allowed-tools` nella SKILL.md della skill per sapere cosa richiede. Se la skill non lo dichiara, ragiona dal tipo di operazione:
+
+| Tipo di operazione | Tool |
+|---|---|
+| Leggere file locali | `read`, `grep`, `find` |
+| Scrivere / modificare file | `write`, `edit` |
+| Eseguire comandi shell | `bash` |
+| Fare fetch di URL / API esterne | `web_fetch` |
+| Cercare sul web | `web_search` |
+
+Non dare `bash` se la skill non ne ha bisogno. Non dare `write`/`edit` a un membro che fa solo analisi. Meno tool, meno superficie di errore.
+
+**Model selection:**
+
+| Modello | Quando usarlo |
+|---|---|
+| `kimi-k2.6:cloud` | Pensiero complesso, contesto molto ampio, analisi multi-documento, ragionamento strategico |
+| `deepseek-v4-flash:cloud` | Coding, logica, debug, task tecnici precisi |
+| `gemma4:31b-cloud` | Ragionamento generale, scrittura, sintesi, sviluppo concettuale |
+
+Scegli il modello in base al compito del membro, non usare lo stesso per tutti.
 
 **Prima di creare un team, proponi un nome basato sul contesto e chiedi conferma.** Esempio: *"Pensavo di chiamarlo `forge` — va bene o preferisci qualcos'altro?"* Aspetta la risposta dell'utente prima di chiamare `alfred_team_create`. Il nome è un'identità persistente — compare nei manifest, nei debate salvati, nei flow.
 
@@ -183,7 +209,7 @@ alfred_run({
 })
 ```
 
-Il tool restituisce il thread completo dei contributi. Leggilo, distillalo, porta all'utente una sintesi che integra le prospettive — non un copia-incolla.
+Il tool torna immediatamente con il `debateId`. Monitora con `alfred_status` finché lo stato non è `completed`, poi leggi il thread con `alfred_get({ projectRoot, filter: { debateId } })`. Distilla il risultato — non fare un copia-incolla.
 
 ---
 

@@ -1,4 +1,5 @@
 import { DatabaseSync as Database } from "node:sqlite";
+import { randomBytes } from "node:crypto";
 import * as path from "node:path";
 import type { Debate, DebateEntry, DebateRow, DebateEntryRow } from "./types.js";
 
@@ -120,8 +121,10 @@ export class AlfredDatabase {
     this.db.exec("BEGIN IMMEDIATE");
     try {
       const sequence = this.getNextSequence(debate.team);
-      const title = debate.request.title;
-      const id = `${String(sequence).padStart(4, "0")}_${title}`;
+      const rand = randomBytes(3).toString("hex");
+      const group = (debate.groupId ?? "run").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+      const type = (debate.type ?? "run").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+      const id = `${group}-${type}-${rand}`;
 
       this.db.prepare(`
         INSERT INTO debates (

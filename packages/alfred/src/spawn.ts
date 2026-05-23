@@ -7,38 +7,41 @@ import type { TeamMember, AgentTurnResult } from "./types.js";
 
 const MONOREPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
+function buildSkillSearchDirs(projectRoot?: string): string[] {
+  const dirs: string[] = [];
+
+  if (projectRoot) {
+    dirs.push(path.join(projectRoot, ".pi", "skills"));
+    dirs.push(path.join(projectRoot, ".alfred", "skills"));
+  }
+
+  dirs.push(path.join(os.homedir(), ".pi", "agent", "skills"));
+
+  try {
+    const packagesDir = path.join(MONOREPO_ROOT, "packages");
+    const packages = fs.readdirSync(packagesDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+    for (const pkg of packages) {
+      dirs.push(path.join(packagesDir, pkg, "skills"));
+    }
+  } catch {}
+
+  return dirs;
+}
+
 function resolveSkillPaths(skills: string[], projectRoot?: string): string[] {
+  const searchDirs = buildSkillSearchDirs(projectRoot);
   const resolved: string[] = [];
 
   for (const skillName of skills) {
-    let found = false;
+    const skillPath = searchDirs
+      .map((dir) => path.join(dir, skillName, "SKILL.md"))
+      .find((p) => fs.existsSync(p));
 
-    if (projectRoot) {
-      const localPath = path.join(projectRoot, ".alfred", "skills", skillName, "SKILL.md");
-      if (fs.existsSync(localPath)) {
-        resolved.push(localPath);
-        found = true;
-        continue;
-      }
-    }
-
-    try {
-      const packagesDir = path.join(MONOREPO_ROOT, "packages");
-      const packages = fs.readdirSync(packagesDir, { withFileTypes: true })
-        .filter((d) => d.isDirectory())
-        .map((d) => d.name);
-
-      for (const pkg of packages) {
-        const skillPath = path.join(packagesDir, pkg, "skills", skillName, "SKILL.md");
-        if (fs.existsSync(skillPath)) {
-          resolved.push(skillPath);
-          found = true;
-          break;
-        }
-      }
-    } catch {}
-
-    if (!found) {
+    if (skillPath) {
+      resolved.push(skillPath);
+    } else {
       console.warn(`[alfred] Skill '${skillName}' not found, skipping.`);
     }
   }

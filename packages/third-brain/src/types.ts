@@ -1,12 +1,12 @@
 // ─── Costanti enumerabili ─────────────────────────────────────────────────────
 
 export const NOTE_TYPES = [
-  "osservazione",
-  "congettura",
-  "assioma",
-  "lemma",
-  "tensione",
-  "decisione",
+  "dato",
+  "protocollo",
+  "sintesi",
+  "attrito",
+  "configurazione",
+  "indice",
 ] as const;
 
 export const RELATION_TYPES = [
@@ -24,19 +24,19 @@ export type NoteType = (typeof NOTE_TYPES)[number];
 
 /**
  * Tipo semantico della nota — immutabile dopo la creazione.
- * - osservazione: fatto grezzo, empirico, non ancora interpretato
- * - congettura:   pattern sospettato con fondamento, non ancora dimostrato
- * - assioma:      principio assunto vero senza dimostrazione — base del ragionamento
- * - lemma:        risultato intermedio che sostiene qualcos'altro
- * - tensione:     conflitto esplicito tra due idee o assiomi
- * - decisione:    scelta tracciabile con contesto e motivazione
+ * - dato: fatto grezzo, costante, parametro tecnico
+ * - protocollo: istruzioni, routine, procedure "se A allora B"
+ * - sintesi: ponti creativi, intuizioni, conclusioni non ovvie
+ * - attrito: bug, errori, tensioni, resistenze
+ * - configurazione: decisioni prese, setup, preferenze
+ * - indice: note madri che condensano cluster densi
  */
 
 export type RelationType = (typeof RELATION_TYPES)[number];
 
 /** Restituisce true per i tipi citabili e fondati su fonte. */
 export function isEvidence(kind: NoteType): boolean {
-  return kind === "osservazione" || kind === "lemma";
+  return kind === "dato";
 }
 
 /** Testo canonico da vettorizzare per una nota: contesto + contenuto. */
