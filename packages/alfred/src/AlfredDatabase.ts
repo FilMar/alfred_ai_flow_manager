@@ -1,4 +1,4 @@
-import { DatabaseSync as Database } from "node:sqlite";
+import { Database } from "bun:sqlite";
 import { randomBytes } from "node:crypto";
 import * as path from "node:path";
 import type { Debate, DebateEntry, DebateRow, DebateEntryRow } from "./types.js";
