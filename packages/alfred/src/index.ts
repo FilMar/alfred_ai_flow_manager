@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
-const WORKER_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "worker.js");
+const WORKER_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "worker.ts");
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { AlfredProject as AlfredProjectType, Debate, Flow, Team } from "./types.js";
@@ -51,7 +51,7 @@ function spawnWorker(projectRoot: string, debateId: string, workerArgs: string[]
   mkdirSync(logsDir, { recursive: true });
   const logPath = path.join(logsDir, `${debateId}.log`);
   const logFd = openSync(logPath, "a");
-  const child = spawn("node", [WORKER_PATH, ...workerArgs], {
+  const child = spawn("bun", ["run", WORKER_PATH, ...workerArgs], {
     cwd: projectRoot,
     detached: true,
     stdio: ["ignore", logFd, logFd],

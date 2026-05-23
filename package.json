@@ -1,21 +1,21 @@
 {
   "name": "pi-packages",
-  "private": true,
-  "workspaces": [
-    "packages/*"
-  ],
   "pi": {
     "extensions": [
-      "./packages/alfred/dist/index.js",
-      "./packages/third-brain/dist/index.js"
+      "./packages/alfred/src/index.ts",
+      "./packages/third-brain/src/index.ts"
     ],
     "skills": [
       "./packages/alfred/skills",
       "./packages/third-brain/skills"
     ]
   },
+  "private": true,
   "scripts": {
-    "build": "npm --workspaces run build",
-    "setup": "npm install && npm run build && for d in packages/*/; do pi install \"./$d\"; done"
-  }
+    "typecheck": "bun run --filter '*' typecheck",
+    "setup": "bun install"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
 }
