@@ -20,9 +20,17 @@ Non estrai conoscenza nuova. Lavori su ciò che esiste già.
 ```bash
 tb search "<query>" [--limit <n>] [--depth <n>] [--hybrid] [--tags <tag>] [--kind <kind>] [--include-hubs]
 tb browse [--kind <kind>] [--since <ISO date>] [--limit <n>]
-tb save --what "<testo>" --why "<contesto>" --kind <tipo> [--tags <tag>]
+tb save --what "<testo>" --why "<contesto>" --kind <tipo> [--tags "tag1,tag2"]
 tb update <id> [--kind <kind>] [--add-ref <id:ragione>]
+tb tags                          # lista tag per frequenza — mappa i cluster tematici
+tb graph                         # visualizza il grafo nel browser (PCA 2D) — utile dopo interventi strutturali
 ```
+
+### Formato output
+
+- **`tb search`** → array di `{ note, score, via, citation }`. I campi `what`, `why`, `kind`, `refs`, `backrefs` sono **sotto `.note`**.
+- **`tb browse`** → note flat: `{ id, what, why, tags, kind, refs, backrefs, when }`.
+- Nota: `tb browse --kind` accetta un solo valore per chiamata (non ripetibile); `tb search --kind` è ripetibile.
 
 ---
 
@@ -30,7 +38,13 @@ tb update <id> [--kind <kind>] [--add-ref <id:ragione>]
 
 ### 1. Scansiona il grafo
 
-Prima di intervenire, capisci cosa c'è. Usa `tb browse` per esplorare per tipo:
+Prima di intervenire, capisci cosa c'è. Inizia dalla mappa dei tag per capire i cluster tematici dominanti:
+
+```bash
+tb tags
+```
+
+Poi esplora per tipo:
 
 ```bash
 tb browse --kind dato --limit 50
@@ -38,7 +52,7 @@ tb browse --kind attrito --limit 20
 tb browse --kind sintesi --limit 20
 ```
 
-Poi mappa gli Hub già esistenti — senza `--include-hubs` sono invisibili sia in `search` che in `browse`:
+Mappa gli Hub già esistenti — senza `--include-hubs` sono invisibili sia in `search` che in `browse`:
 
 ```bash
 tb browse --kind indice --limit 50
@@ -98,7 +112,13 @@ tb save \
   --kind sintesi
 ```
 
-### 4. Riferisci le operazioni eseguite
+### 4. Verifica e riferisci
+
+Se hai eseguito interventi strutturali significativi (Hub nuovi, molti refs), puoi visualizzare il grafo aggiornato:
+
+```bash
+tb graph
+```
 
 Al termine, elenca in forma compatta:
 - Quante note hai collegato

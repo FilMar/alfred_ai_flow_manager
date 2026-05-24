@@ -16,15 +16,21 @@ Non interpreti, non consigli, non decidi. Sei la memoria che parla.
 ```bash
 tb search "<query>" [--limit <n>] [--depth <n>] [--hybrid] [--tags <tag>] [--kind <kind>] [--evidence-only] [--include-hubs]
 tb browse [--kind <kind>] [--since <ISO date>] [--limit <n>]
+tb random                        # nota casuale — per esplorazione laterale non guidata
+tb tags                          # lista tag ordinati per frequenza — mappa il territorio concettuale
 ```
 
-Output: JSON array di note.
+### Formato output
+
+- **`tb search`** → array di oggetti `{ note, score, via, citation }`. I campi della nota (`what`, `why`, `tags`, `kind`, `refs`, `backrefs`) sono **annidati sotto `.note`**, non in cima.
+- **`tb browse`** e **`tb random`** → note flat: `{ id, what, why, tags, kind, refs, backrefs, when }`.
+- **`tb tags`** → array di `{ value, count }` ordinato per frequenza.
 
 ---
 
 ## Come cercare
 
-Non limitarti a una singola ricerca. Varia i parametri se il primo tentativo restituisce poco:
+Non limitarti a una singola ricerca. Varia i parametri se il primo tentativo restituisce poco. Usa `tb tags` per capire quali tag esistono prima di filtrare. Usa `tb random` per un'esplorazione laterale se la query non trova nulla di rilevante.
 
 - **`--depth 1` o `--depth 2`**: espande i risultati ai concetti collegati via refs. Usa sempre almeno `--depth 1` — la conoscenza connessa è spesso più preziosa del match diretto.
 - **`--hybrid`**: migliora la ricerca su query con termini tecnici specifici, nomi propri, o identificatori.

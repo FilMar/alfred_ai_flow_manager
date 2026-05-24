@@ -33,7 +33,8 @@ Prima di salvare, **verifica se il concetto esiste già** nel Third Brain.
 ```bash
 tb tags                            # vocabolario tag esistente — consultare prima di scegliere
 tb search "<concetto chiave>" --limit 5   # cerca idee simili per semantica
-tb save --what "<idea atomica>" --why "<ragione di rilevanza>" --kind <tipo> [--tags <tag>] [--source <uri>]
+tb save --what "<idea atomica>" --why "<ragione di rilevanza>" --kind <tipo> --tags "tag1,tag2,tag3" [--source <uri>]
+# --tags vuole i tag separati da virgola in una sola stringa. MAI con spazi: --tags "tag1 tag2".
 tb random                          # estrae una nota casuale per la sfida di serendipità
 tb update <id> --add-ref "<id-random>:<ragione esplicita del ponte>"
 ```
@@ -52,18 +53,21 @@ tb update <id> --add-ref "<id-random>:<ragione esplicita del ponte>"
     - **Sostantivi, minuscolo, singolare**: `psicologia` non `psicologici` o `Psicologia`.
     - **Livello dominio**: né troppo specifici (`paura-del-giudizio`) né troppo generici (`mente`).
     - **Max 3 tag per nota**: forza la prioritizzazione — scegli i più discriminanti.
+    - **Sintassi**: `--tags "bias,mente,decisioni"` — virgola come separatore, tutto in una stringa. Mai spazi come separatori (`--tags "bias mente"`).
 - **`source`**: Origine del concetto. Compila **sempre** se il concetto ha una fonte identificabile. Regole:
     - Libro o saggio: `"Autore — Titolo"` (es. `"Taleb — Antifragile"`)
     - URL: l'URL diretto
     - Conversazione o sessione di lavoro: ometti — il contesto non è una fonte citabile
     - Se la fonte è vaga o ricostruita a memoria: ometti piuttosto che inventare
 - **`kind`**: Categorizzazione funzionale dell'asset. Devi scegliere obbligatoriamente UNO dei seguenti tipi atomici:
-    - `dato`: Verità atomiche, fatti nudi, costanti, parametri tecnici. (Es: "X aumenta del 20%").
-    - `protocollo`: Istruzioni, routine, procedure "se A allora B", best practice. (Es: "Esporsi alla luce entro 60min").
-    - `sintesi`: Intuizioni, ponti creativi tra domini diversi, conclusioni non ovvie. (Es: "Il cortisolo come interruttore di sistema").
-    - `attrito`: Bug, errori, tensioni, cose che non funzionano o creano resistenza. (Es: "Il nastro adesivo irrita la pelle").
+    - `dato`: Un finding empirico, un meccanismo osservato, un fatto da ricerca o libro. Non deve essere numerico — può essere narrativo. La domanda chiave: *"Questo viene da un esperimento, uno studio, un'osservazione sistematica?"* → `dato`. (Es: "Campioni piccoli producono risultati più estremi per puro caso", "Il tasso di donazione organi è 100% nei paesi opt-out e 4% in quelli opt-in").
+    - `protocollo`: Istruzioni applicabili, routine, procedure "se A allora B", tecniche da mettere in pratica. La domanda chiave: *"Si può fare?"* → `protocollo`. (Es: "Far scrivere l'opinione individuale PRIMA della discussione di gruppo per evitare pensiero unico", "Esporsi alla luce entro 60min dal risveglio").
+    - `sintesi`: Una connessione esplicita tra **almeno due domini diversi** che non era presente nella fonte, oppure un'interpretazione personale che aggiunge un layer non ovvio. Non è sintesi qualcosa che è già non-ovvio nella fonte — deve esserci un ponte che *tu* stai costruendo. (Es: "Il meccanismo del default si applica al product design esattamente come alla politica pubblica").
+    - `attrito`: Una tensione irrisolta, un paradosso, una limitazione di un modello, una contraddizione tra principi. Non solo bug tecnici — anche conflitti cognitivi. (Es: "L'intuizione esperta funziona negli ambienti regolari ma è dannosissima in quelli irregolari: la stessa fiducia che ti rende competente in un dominio ti rende pericoloso nell'altro").
     - `configurazione`: Decisioni prese, preferenze, setup scelti. (Es: "Utilizzo della Tassonomia Funzionale").
     - **DIVIETO ASSOLUTO**: Non utilizzare mai il kind `indice`. L'`indice` è un nodo di compressione architettonica che non appartiene al processo di estrazione atomica.
+
+    **Regola d'oro per il contesto libro/ricerca**: quando stai processando contenuto da un libro o video educativo, la maggior parte delle note sarà `dato` o `protocollo`. Usa `sintesi` solo se stai aggiungendo un ponte che la fonte non fa esplicitamente. Usa `attrito` per le limitazioni, eccezioni e paradossi del modello presentato — sono spesso le note più fertili.
 
 ### 3b. Serendipità (Il Ponte Casuale)
 Dopo ogni `tb save`, chiama `tb random` per estrarre una nota casuale dal Third Brain.

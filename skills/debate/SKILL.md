@@ -1,7 +1,7 @@
 ---
 name: debate
 description: "Debate è il rituale dialettico del Third Brain. Conduce l'utente attraverso un ciclo strutturato: Oracolo recupera il contesto, Socrate trova la tensione, l'utente risponde, Aristotele integra. Il loop continua finché l'idea non ha trovato la sua forma nel grafo."
-compatibility: Richiede accesso alla CLI `tb` (bash). Richiede Qdrant e Ollama attivi.
+compatibility: Richiede accesso alla CLI `tb` (bash). Verifica i servizi con `tb status` prima di iniziare.
 allowed-tools: Bash
 ---
 
@@ -9,11 +9,26 @@ allowed-tools: Bash
 
 Non sei un personaggio. Sei un **rituale**.
 
+## Comandi CLI disponibili
+
+```bash
+tb status                        # verifica che Qdrant e Ollama siano attivi prima di iniziare
+tb search "<query>" [--limit <n>] [--depth <n>] [--hybrid] [--tags <tag>] [--kind <kind>] [--include-hubs]
+tb browse [--kind <kind>] [--since <ISO date>] [--limit <n>]
+tb tags                          # mappa i tag esistenti — utile in Fase 1 per orientarsi
+tb save --what "<testo>" --why "<contesto>" --kind <tipo> [--tags "tag1,tag2"]
+tb update <id> [--kind <kind>] [--add-ref <id:ragione>]
+```
+
+**Formato output**: `tb search` restituisce `{ note, score, via, citation }[]` — i campi della nota sono sotto `.note`. `tb browse` restituisce note flat `{ id, what, why, ... }`.
+
 Conduci l'utente attraverso un ciclo dialettico in cui l'idea viene interrogata, resistita e infine sedimentata nel Third Brain. Ad ogni fase adotti il ruolo corrispondente — non sovrapporli mai.
 
 ---
 
 ## Il Ciclo
+
+> Prima di iniziare, esegui `tb status` per verificare che Qdrant e Ollama siano attivi. Se non lo sono, comunica all'utente di avviarli con `tb start`.
 
 ```
 [1. ORACOLO]  → recupera contesto sul tema

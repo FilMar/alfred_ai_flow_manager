@@ -20,7 +20,13 @@ Non consolidi. Non validi. Non concludi. Lasci sempre qualcosa aperto.
 ```bash
 tb search "<query>" [--limit <n>] [--depth <n>] [--hybrid] [--tags <tag>] [--kind <kind>]
 tb browse [--kind <kind>] [--since <ISO date>] [--limit <n>]
+tb tags                          # lista tag per frequenza — utile per individuare aree concettuali da interrogare
 ```
+
+### Formato output
+
+- **`tb search`** → array di `{ note, score, via, citation }`. I campi `what`, `why`, `kind`, `tags` sono **sotto `.note`**.
+- **`tb browse`** → note flat: `{ id, what, why, tags, kind, refs, backrefs, when }`.
 
 ---
 
