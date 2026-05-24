@@ -1,21 +1,23 @@
 {
-  "name": "pi-packages",
-  "pi": {
-    "extensions": [
-      "./packages/alfred/src/index.ts",
-      "./packages/third-brain/src/index.ts"
-    ],
-    "skills": [
-      "./packages/alfred/skills",
-      "./packages/third-brain/skills"
-    ]
-  },
+  "name": "pi",
+  "version": "0.1.0",
+  "type": "module",
   "private": true,
-  "scripts": {
-    "typecheck": "bun run --filter '*' typecheck",
-    "setup": "bun install"
+  "bin": {
+    "tb": "./tools/tb/src/cli.ts"
   },
-  "workspaces": [
-    "packages/*"
-  ]
+  "scripts": {
+    "typecheck": "tsc --project tools/tb/tsconfig.json --noEmit"
+  },
+  "pi": {
+    "skills": ["./skills"]
+  },
+  "dependencies": {
+    "commander": "^14.0.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/node": "^22",
+    "typescript": "^5.9.3"
+  }
 }
