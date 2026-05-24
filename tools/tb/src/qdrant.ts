@@ -150,34 +150,23 @@ export async function getByIds(ids: string[]): Promise<Note[]> {
   return data.result.map((r) => r.payload).filter(Boolean);
 }
 
-/** Restituisce l'ID di una nota casuale. Null se la collezione è vuota. */
+/** Restituisce l'ID di una nota casuale usando un vettore random normalizzato. O(log n), no Ollama. */
 export async function randomNoteId(): Promise<string | null> {
-  let info: { result?: { points_count?: number } };
+  const v = Array.from({ length: VECTOR_SIZE }, () => Math.random() * 2 - 1);
+  const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
+  const vector = v.map((x) => x / norm);
+
+  type QueryResp = { result?: { points?: Array<{ id: string }> } };
+  let data: QueryResp;
   try {
-    info = await qdrantClient.request<{ result?: { points_count?: number } }>(
-      "GET",
-      `/collections/${COLLECTION}`,
-    );
-  } catch (err) {
-    if (err instanceof HttpError && err.status === 404) return null;
-    throw new Error(`randomNoteId: Qdrant unreachable — ${err instanceof Error ? err.message : String(err)}`);
-  }
-
-  const count = info.result?.points_count ?? 0;
-  if (count === 0) return null;
-
-  const offset = Math.floor(Math.random() * count);
-
-  let data: { result?: { points?: { id: string }[] } };
-  try {
-    data = await qdrantClient.request<{ result?: { points?: { id: string }[] } }>(
+    data = await qdrantClient.request<QueryResp>(
       "POST",
-      `/collections/${COLLECTION}/points/scroll`,
-      { limit: 1, offset, with_payload: false, with_vector: false },
+      `/collections/${COLLECTION}/points/query`,
+      { query: vector, using: DENSE_VECTOR_NAME, limit: 1, with_payload: false },
     );
   } catch (err) {
     if (err instanceof HttpError && err.status === 404) return null;
-    throw new Error(`randomNoteId: Qdrant unreachable — ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`randomNoteId: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   const points = data.result?.points ?? [];
@@ -313,6 +302,22 @@ export async function search(vector: number[], options: SearchOptions = {}): Pro
   }
 
   return results;
+}
+
+// ─── Facets ──────────────────────────────────────────────────────────────────
+
+export interface TagFacet {
+  value: string;
+  count: number;
+}
+
+export async function listTags(limit = 200): Promise<TagFacet[]> {
+  const data = await qdrantClient.request<{ result: { hits: TagFacet[] } }>(
+    "POST",
+    `/collections/${COLLECTION}/facets`,
+    { key: "tags", limit },
+  );
+  return data.result.hits;
 }
 
 // ─── Scroll ──────────────────────────────────────────────────────────────────

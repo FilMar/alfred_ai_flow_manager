@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { checkHealth, EMBED_MODEL } from "./infra.js";
-import { createNote, addRefs, changeKind, searchNotes, browseNotes } from "./notes.js";
+import { createNote, addRefs, changeKind, searchNotes, browseNotes, randomNote, listNoteTags } from "./notes.js";
 import type { NoteType, SearchOptions } from "./types.js";
 import { NOTE_TYPES } from "./types.js";
 
@@ -50,6 +50,10 @@ async function requireServices(opts: { needsEmbedding?: boolean } = {}): Promise
 function collect(val: string, acc: string[]): string[] {
   acc.push(val);
   return acc;
+}
+
+function normalizeTags(tags: string[]): string[] {
+  return tags.flatMap((t) => t.split(",").map((s) => s.trim())).filter(Boolean);
 }
 
 function validateKind(kind: string): asserts kind is NoteType {
@@ -134,21 +138,38 @@ program
     validateKind(opts.kind);
     await requireServices({ needsEmbedding: true });
 
-    const { note, seed } = await createNote({
+    const note = await createNote({
       what: opts.what,
       why: opts.why,
       kind: opts.kind,
-      tags: opts.tags,
+      tags: normalizeTags(opts.tags),
       source: opts.source,
     });
 
-    out({
-      id: note.id,
-      seed: seed ? { id: seed.id, what: seed.what, why: seed.why } : null,
-      message: seed
-        ? `Correlato seed: ${seed.id}. [SFIDA DI SERENDIPITÀ]: inventa un ponte creativo tra questa nota e il seed.`
-        : "Prima nota — nessun correlato seed disponibile.",
-    });
+    out({ id: note.id });
+  });
+
+// ─── tags ─────────────────────────────────────────────────────────────────────
+
+program
+  .command("tags")
+  .description("Lista i tag in uso, ordinati per frequenza")
+  .action(async () => {
+    await requireServices({ needsEmbedding: false });
+    const tags = await listNoteTags();
+    out(tags);
+  });
+
+// ─── random ───────────────────────────────────────────────────────────────────
+
+program
+  .command("random")
+  .description("Restituisce una nota casuale dal Third Brain")
+  .action(async () => {
+    await requireServices({ needsEmbedding: false });
+    const note = await randomNote();
+    if (!note) die("Nessuna nota nel Third Brain.");
+    out(note);
   });
 
 // ─── search ───────────────────────────────────────────────────────────────────
@@ -170,7 +191,7 @@ program
       limit: parseInt(opts.limit, 10),
       depth: parseInt(opts.depth, 10),
       hybrid: opts.hybrid ?? false,
-      tags: opts.tags.length ? opts.tags : undefined,
+      tags: opts.tags.length ? normalizeTags(opts.tags) : undefined,
       kind: opts.kind.length ? (opts.kind as NoteType[]) : undefined,
       evidence_only: opts.evidenceOnly ?? false,
       include_hubs: opts.includeHubs ?? false,
