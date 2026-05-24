@@ -312,12 +312,34 @@ export interface TagFacet {
 }
 
 export async function listTags(limit = 200): Promise<TagFacet[]> {
-  const data = await qdrantClient.request<{ result: { hits: TagFacet[] } }>(
-    "POST",
-    `/collections/${COLLECTION}/facets`,
-    { key: "tags", limit },
-  );
-  return data.result.hits;
+  const freq = new Map<string, number>();
+  let offset: string | null = null;
+
+  while (true) {
+    const body: Record<string, unknown> = {
+      limit: 100,
+      with_payload: ["tags"],
+      with_vector: false,
+      ...(offset && { offset }),
+    };
+    const data = await qdrantClient.request<{
+      result: { points: Array<{ payload: { tags?: string[] } }>; next_page_offset: string | null };
+    }>("POST", `/collections/${COLLECTION}/points/scroll`, body);
+
+    for (const point of data.result.points) {
+      for (const tag of point.payload.tags ?? []) {
+        freq.set(tag, (freq.get(tag) ?? 0) + 1);
+      }
+    }
+
+    if (!data.result.next_page_offset) break;
+    offset = data.result.next_page_offset;
+  }
+
+  return Array.from(freq.entries())
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit);
 }
 
 // ─── Scroll ──────────────────────────────────────────────────────────────────

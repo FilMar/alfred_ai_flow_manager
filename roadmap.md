@@ -8,47 +8,51 @@
 ### Obiettivo
 Portare il Third Brain a uno stato pienamente utilizzabile: grafo associativo immutabile, navigazione senza query semantica, e agenti cognitivi completi per il flusso serale.
 
-### 1A — Refactor a CLI
+### 1A — CLI `tb`
 
-- [x] **CLI entry point** (`src/cli.ts`): Binario `third-brain` con sottocomandi `save`, `search`, `update`, `browse`, `start`, `stop`, `status`. `"bin": { "third-brain": "./src/cli.ts" }` aggiunto in `package.json`. L'extension pi (`src/index.ts`) resta come thin wrapper.
+- [x] **CLI entry point** (`tools/tb/src/cli.ts`): Binario `tb` con sottocomandi `save`, `search`, `update`, `browse`, `random`, `tags`, `start`, `stop`, `status`. Symlink in `~/.local/bin/tb`.
 
-- [x] **`third-brain start` / `stop` / `status`**: Lifecycle Qdrant via `docker compose -f packages/third-brain/compose.qdrant.yml`. `start` attende che Qdrant sia raggiungibile e avvisa se Ollama o il modello mancano. Compatibile Docker e Podman via `podman-docker`.
+- [x] **`tb start` / `stop` / `status`**: Lifecycle Qdrant via `docker compose`. `start` attende che Qdrant sia raggiungibile e avvisa se Ollama o il modello mancano.
 
-- [x] **Health check su ogni comando**: `requireServices()` controlla Qdrant e Ollama prima di ogni operazione. Exit code 1 con suggerimento `third-brain start`.
+- [x] **Health check su ogni comando**: `requireServices()` controlla Qdrant e Ollama prima di ogni operazione. Exit code 1 con suggerimento `tb start`.
 
-- [x] **`third-brain save`**: Flag `--what`, `--why`, `--kind`, `--tags` (ripetibile), `--source`. Output JSON (id, seed, messaggio serendipità).
+- [x] **`tb save`**: Flag `--what`, `--why`, `--kind`, `--tags` (ripetibile o comma-separated), `--source`. Output JSON `{ id }`. Serendipità separata (`tb random`).
 
-- [x] **`third-brain search`**: Argomento posizionale `<query>`. Flag `--limit`, `--depth`, `--hybrid`, `--tags`, `--kind`, `--evidence-only`, `--include-hubs`. Output JSON array.
+- [x] **`tb search`**: Argomento posizionale `<query>`. Flag `--limit`, `--depth`, `--hybrid`, `--tags`, `--kind`, `--evidence-only`, `--include-hubs`. Output JSON array.
 
-- [x] **`third-brain update`**: Argomento posizionale `<id>`. Flag `--kind`, `--add-ref <id:reason>` (ripetibile, append-only — legge i refs esistenti e li estende). Output JSON con patch applicata.
+- [x] **`tb update`**: Argomento posizionale `<id>`. Flag `--kind`, `--add-ref <id:reason>` (ripetibile, append-only). Output `{ id, updated: true }`.
 
-- [x] **`third-brain browse`**: Flag `--kind`, `--since` (ISO date), `--limit` (default 20). Usa Qdrant scroll API. Output JSON array.
+- [x] **`tb browse`**: Flag `--kind`, `--since` (ISO date), `--limit` (default 20). Usa Qdrant scroll API. Output JSON array.
 
-- [x] **Aggiornare SKILL.md esistenti** (Oracolo, Platone) per documentare i comandi CLI al posto dei tool names. `allowed-tools: Bash`, comandi documentati con firma completa.
+- [x] **`tb random`**: Restituisce una nota casuale usando nearest-neighbor su vettore random normalizzato. O(log n), non richiede Ollama.
+
+- [x] **`tb tags`**: Lista tutti i tag in uso ordinati per frequenza. Scroll paginato con payload `["tags"]`, aggregazione client-side.
 
 ### 1B — Core del grafo
 
-- [x] **`backrefs`**: Campo `backrefs?: string[]` aggiunto a `Note` in `types.ts`. Gestito automaticamente da `notes.ts.appendBackref()` — chiamata da `createNote` e `addRefs`.
+- [x] **`backrefs`**: Campo `backrefs?: string[]` in `Note`. Aggiornato automaticamente da `appendBackref()` in `notes.ts` ad ogni `addRefs`.
 
-- [x] **`refs` append-only con limite 6**: `REFS_LIMIT = 6` in `types.ts`. Validazione in `notes.ts.addRefs()` con errore esplicito che suggerisce di consolidare in un Hub.
+- [x] **`refs` append-only con limite 6**: `REFS_LIMIT = 6`. Errore esplicito che suggerisce di consolidare in un Hub.
 
-- [x] **Refactor dominio in `notes.ts`**: Unica API pubblica del dominio (`createNote`, `addRefs`, `changeKind`, `searchNotes`, `browseNotes`, `getNotes`). `qdrant.ts` è puro layer dati (`upsert`, `setPayload`, `getByIds`, `search`, `scroll`, `randomNoteId`). Grafo dipendenze: `cli → notes → qdrant`. Nessuna dipendenza circolare.
+- [x] **Architettura a layer**: `cli → notes → qdrant → infra`. Nessuna dipendenza circolare. `qdrant.ts` è puro layer dati, `notes.ts` contiene tutta la business logic.
 
-- [x] **Hub escluse dalla ricerca diretta**: `buildSearchFilter` in `qdrant.ts` esclude `kind: "indice"` via `must_not` per default. Parametro `include_hubs?: boolean` aggiunto a `SearchOptions` e al comando `third-brain search --include-hubs`.
+- [x] **Hub escluse dalla ricerca diretta**: `buildSearchFilter` esclude `kind: "indice"` via `must_not` per default. Override con `--include-hubs`.
 
-### 1C — Navigazione
+- [x] **Hybrid search**: Dense + sparse (BM25-like) con RRF fusion via `--hybrid`.
 
-- [x] **`third-brain browse`**: Comando CLI per navigare la memoria senza query semantica. Parametri: `--kind`, `--since` (ISO date), `--limit` (default 20). Usa Qdrant scroll API via `notes.ts.browseNotes()`.
+### 1C — Agenti cognitivi
 
-### 1D — Agenti cognitivi
+- [x] **Platone (Accrescitore della Memoria)**: Skill completa. Distillazione con Filtro di Feynman, vincoli di purezza semantica, regole tag (`tb tags` prima di scegliere, max 3, sostantivi singolari), regola `--source` (compila se fonte identificabile, ometti se conversazione), serendipità esplicita via `tb random` + `tb update --add-ref`.
 
-- [ ] **Socrate (Provocatore — Elenchos)**: Skill di attrito cognitivo. Prende un'idea in input, interroga il Third Brain cercando contraddizioni e lacune nei `refs` e `backrefs`, formula la domanda scomoda senza mai chiudere il ragionamento al posto dell'utente. L'obiettivo è creare tensione che richieda la consultazione dell'Antinet. Comandi consentiti: `third-brain search`, `third-brain browse`. Posizione: `packages/third-brain/skills/socrate/SKILL.md`.
+- [x] **Debate (Orchestratore dialettico)**: Skill che gestisce il loop `Oracolo → Socrate → Utente → Aristotele → Oracolo → ripeti`. Sostituisce Alfred eliminato nel refactor.
 
-- [ ] **Aristotele (Curatore della Sintesi)**: Skill di codifica della conoscenza elaborata. Usa `third-brain browse` per trovare cluster densi, crea Hub (`kind: "indice"`) con `third-brain save`, aggiunge refs dalle note sorgente alla Hub con `third-brain update`. Integra le risposte dell'utente post-Antinet promuovendo materiale grezzo a conoscenza elaborata. Comandi consentiti: `third-brain search`, `third-brain browse`, `third-brain save`, `third-brain update`. Posizione: `packages/third-brain/skills/aristotele/SKILL.md`.
+- [ ] **Socrate (Provocatore — Elenchos)**: Skill di attrito cognitivo. Interroga il Third Brain cercando contraddizioni, formula la domanda scomoda senza chiudere il ragionamento. Comandi: `tb search`, `tb browse`.
 
-### 1E — Flusso Serale
+- [ ] **Aristotele (Curatore della Sintesi)**: Skill di codifica della conoscenza elaborata. Crea Hub (`kind: "indice"`), aggiunge refs. Comandi: `tb search`, `tb browse`, `tb save`, `tb update`.
 
-- [ ] **Flusso Serale (loop)**: Aggiornare la skill di Alfredo per includere il flusso serale: `Utente propone idea → Socrate interroga DB → domanda scomoda → Utente su Antinet → Aristotele integra risposta nel DB → Socrate verifica tensione → (ripeti)`.
+### 1D — Flusso Serale
+
+- [ ] **Oracolo**: Skill di apertura del debate. Interroga il Third Brain e propone la tensione cognitiva del giorno.
 
 ---
 

@@ -52,6 +52,11 @@ tb update <id> --add-ref "<id-random>:<ragione esplicita del ponte>"
     - **Sostantivi, minuscolo, singolare**: `psicologia` non `psicologici` o `Psicologia`.
     - **Livello dominio**: né troppo specifici (`paura-del-giudizio`) né troppo generici (`mente`).
     - **Max 3 tag per nota**: forza la prioritizzazione — scegli i più discriminanti.
+- **`source`**: Origine del concetto. Compila **sempre** se il concetto ha una fonte identificabile. Regole:
+    - Libro o saggio: `"Autore — Titolo"` (es. `"Taleb — Antifragile"`)
+    - URL: l'URL diretto
+    - Conversazione o sessione di lavoro: ometti — il contesto non è una fonte citabile
+    - Se la fonte è vaga o ricostruita a memoria: ometti piuttosto che inventare
 - **`kind`**: Categorizzazione funzionale dell'asset. Devi scegliere obbligatoriamente UNO dei seguenti tipi atomici:
     - `dato`: Verità atomiche, fatti nudi, costanti, parametri tecnici. (Es: "X aumenta del 20%").
     - `protocollo`: Istruzioni, routine, procedure "se A allora B", best practice. (Es: "Esporsi alla luce entro 60min").
