@@ -64,10 +64,15 @@ function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
 
   const W = window.innerWidth, H = window.innerHeight;
 
-  // Scale PCA coords to screen space as initial positions
+  // Scale PCA coords to screen space — saved as target positions for the anchor force
   const ix = d3.scaleLinear().domain(d3.extent(data.nodes, d => d.x)).range([W*0.12, W*0.88]);
   const iy = d3.scaleLinear().domain(d3.extent(data.nodes, d => d.y)).range([H*0.12, H*0.88]);
-  for (const n of data.nodes) { n.x = ix(n.x); n.y = iy(n.y); }
+  for (const n of data.nodes) {
+    n.targetX = ix(n.x);
+    n.targetY = iy(n.y);
+    n.x = n.targetX;
+    n.y = n.targetY;
+  }
 
   // SVG + glow filter
   const svg = d3.select('#canvas').attr('width', W).attr('height', H);
@@ -102,13 +107,14 @@ function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
     .attr('text-anchor','middle').text(d => d.what.length > 32 ? d.what.slice(0,32)+'…' : d.what)
     .style('display','none');
 
-  // Force simulation — initial layout from PCA, physics takes over
+  // Force simulation: physics displaces nodes locally, anchor pulls them back to PCA position
   const sim = d3.forceSimulation(data.nodes)
-    .force('link', d3.forceLink(data.edges).id(d => d.id).distance(d => 80 + d.source.size + d.target.size).strength(0.35))
-    .force('charge', d3.forceManyBody().strength(d => -120 - d.size * 8).distanceMax(400))
-    .force('collide', d3.forceCollide(d => d.size + 5).strength(0.7).iterations(2))
-    .force('center', d3.forceCenter(W/2, H/2).strength(0.04))
-    .alphaDecay(0.015)
+    .force('link', d3.forceLink(data.edges).id(d => d.id).distance(d => 70 + d.source.size + d.target.size).strength(0.25))
+    .force('charge', d3.forceManyBody().strength(d => -100 - d.size * 6).distanceMax(350))
+    .force('collide', d3.forceCollide(d => d.size + 4).strength(0.8).iterations(2))
+    .force('anchorX', d3.forceX(d => d.targetX).strength(0.12))
+    .force('anchorY', d3.forceY(d => d.targetY).strength(0.12))
+    .alphaDecay(0.012)
     .on('tick', () => {
       edges
         .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
