@@ -4,7 +4,7 @@ import type { Member } from "./types.js";
 
 // ─── Percorsi ─────────────────────────────────────────────────────────────────
 
-const HATS_DIR = "../hats";
+const HATS_DIR = join(import.meta.dir, "../hats");
 const MEMBERS_DIR = () => join(process.cwd(), ".th", "members");
 const TMP_MEMBERS_DIR = () => join("/tmp", ".th", "members");
 
