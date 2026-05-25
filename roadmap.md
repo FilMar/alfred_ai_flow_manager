@@ -15,18 +15,31 @@ CLI `tb` con save, search, update, browse, random, tags, graph. Grafo associativ
 ### Obiettivo
 Costruire un sistema di orchestrazione di agenti con identità cognitive divergenti (cappelli de Bono), flow di esecuzione configurabili, valutazione delle performance e ciclo evolutivo suggerito.
 
-La CLI si chiama `th` (Third Hand), simmetrica a `tb`. I cappelli de Bono vivono in `tools/alfred/hats/`. I membri del progetto in `.th/members/`, i membri temporanei in `/tmp/.th/members/`.
+La CLI si chiama `th` (Third Hand), simmetrica a `tb`. I cappelli de Bono vivono in `tools/th/hats/`. I membri del progetto in `.th/members/`, i membri temporanei in `/tmp/.th/members/`.
 
 ### 2A — Membro ✅
 
 - [x] **`th member create <name>`**: Crea un membro con `--hat`, `--role`, `--tools`, `--skills`. Persiste in `.th/members/<name>.md` come frontmatter + system prompt (ruolo + hat).
 - [x] **`--tmp`**: Flag opzionale — salva il membro in `/tmp/.th/members/` invece del progetto. Utile per membri usa-e-getta.
-- [x] **`th member list`**: Lista membri del progetto corrente.
-- [x] **Risoluzione membro**: `getMember()` cerca prima in `.th/members/`, poi in `/tmp/.th/members/`.
+- [x] **`th member list [--all]`**: Lista membri del progetto corrente; `--all` include anche i temporanei.
+- [x] **`th member get <name>`**: Dettaglio JSON di un membro.
+- [x] **`th member delete <name>`**: Elimina un membro.
+- [x] **Risoluzione membro**: `loadMember()` cerca prima in `.th/members/`, poi in `/tmp/.th/members/`. Lettura singola — restituisce member + system prompt insieme.
+- [x] **`th hats list`**: Lista i cappelli disponibili.
+- [x] **`th hats get <name>`**: Mostra il contenuto di un cappello.
+- [x] **Validazione input**: Nome membro limitato a `[a-zA-Z0-9_-]` — blocca path traversal. Role non può contenere newline.
+- [x] **YAML list format**: `parseList()` gestisce sia `[a, b]` inline che `- item` multi-riga.
+- [x] **`TH_HATS_DIR`**: Env var opzionale per override della directory hats (utile per binary compilati).
 
 ### 2B — Esecuzione singola ✅
 
 - [x] **`th run --member <name> --task "..."`**: Carica il membro, chiama `createAgentSession()` con system prompt override (ruolo + hat), tools e skills del membro. Streaming su stdout. `SessionManager.inMemory()`.
+- [x] **`--thinking <level>`**: Abilita extended thinking (off, minimal, low, medium, high, xhigh). Il reasoning interno viene reindirizzato in `/tmp/th-<member>-<timestamp>.log`; stdout riceve solo il risultato finale.
+- [x] **`--model <provider/id>`**: Sceglie il modello da usare (es. `anthropic/claude-opus-4-7`). Facoltativo — default dal settings di pi.
+- [x] **`--output <file>`**: Salva il risultato su file oltre che su stdout. Utile per passare l'output tra membri in esecuzione sequenziale.
+- [x] **`--timeout <secondi>`**: Aborta la sessione con `session.abort()` se il run supera il limite. Validazione: intero positivo — errore esplicito su input non valido.
+- [x] **`th models`**: Lista i modelli disponibili con API key configurata.
+- [x] **File descriptor safety**: `try/finally` garantisce la chiusura dei fd di log e output anche in caso di errore o abort.
 
 ### 2C — Team
 
