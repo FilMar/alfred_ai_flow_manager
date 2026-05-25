@@ -46,13 +46,37 @@ Portare il Third Brain a uno stato pienamente utilizzabile: grafo associativo im
 
 - [x] **Debate (Orchestratore dialettico)**: Skill che gestisce il loop `Oracolo → Socrate → Utente → Aristotele → Oracolo → ripeti`. Sostituisce Alfred eliminato nel refactor.
 
-- [ ] **Socrate (Provocatore — Elenchos)**: Skill di attrito cognitivo. Interroga il Third Brain cercando contraddizioni, formula la domanda scomoda senza chiudere il ragionamento. Comandi: `tb search`, `tb browse`.
+- [x] **Socrate (Provocatore — Elenchos)**: Skill di attrito cognitivo. Interroga il Third Brain cercando contraddizioni, formula la domanda scomoda senza chiudere il ragionamento. Comandi: `tb search`, `tb browse`.
 
-- [ ] **Aristotele (Curatore della Sintesi)**: Skill di codifica della conoscenza elaborata. Crea Hub (`kind: "indice"`), aggiunge refs. Comandi: `tb search`, `tb browse`, `tb save`, `tb update`.
+- [x] **Aristotele (Curatore della Sintesi)**: Skill di codifica della conoscenza elaborata. Crea Hub (`kind: "indice"`), aggiunge refs. Comandi: `tb search`, `tb browse`, `tb save`, `tb update`.
 
 ### 1D — Flusso Serale
 
-- [ ] **Oracolo**: Skill di apertura del debate. Interroga il Third Brain e propone la tensione cognitiva del giorno.
+- [x] **Oracolo**: Skill di recupero contestuale. Interroga il Third Brain su un argomento e restituisce ciò che è già stato appreso, senza interpretare — usata da Debate e come entry point per la sessione.
+
+### 1E — Visualizzazione grafo
+
+- [x] **`tb graph`**: Server HTTP locale con grafo fisico D3. Layout PCA 2D per posizionamento iniziale dei nodi, forze fisiche per stabilizzazione, WebSocket per highlight in tempo reale dei nodi coinvolti nell'ultima operazione.
+
+---
+
+## Phase 2: Ciclo cognitivo completo
+**Status:** 🚧 In Progress
+
+### Obiettivo
+Il Third Brain non è più solo uno store — è un sistema che genera attrito, sintetizza pattern e accompagna il pensiero nel tempo.
+
+### 2A — Agenti attivi nel loop serale
+
+- [x] **Debate (Orchestratore dialettico)**: Loop `Oracolo → Socrate → Utente → Aristotele → Oracolo → ripeti`. Gestisce il ciclo completo di confronto con il grafo.
+
+- [ ] **Flusso serale guidato**: Sequenza standardizzata di fine giornata — Oracolo apre con una tensione, Socrate interroga, Platone distilla e salva.
+
+### 2B — Qualità del grafo
+
+- [ ] **Merge di note duplicate**: Rilevamento di note semanticamente sovrapposte (`tb search` + soglia coseno) e merge guidato.
+
+- [ ] **Decay / review**: Flag note non referenziate da tempo per revisione o archiviazione.
 
 ---
 
