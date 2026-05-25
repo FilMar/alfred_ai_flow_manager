@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "bin": {
-    "tb": "./tools/tb/src/cli.ts"
+    "tb": "./tools/tb/src/cli.ts",
+    "th": "./tools/th/src/cli.ts"
   },
   "scripts": {
     "typecheck": "tsc --project tools/tb/tsconfig.json --noEmit"
@@ -13,6 +14,7 @@
     "skills": ["./skills"]
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.75.5",
     "commander": "^14.0.3",
     "youtube-transcript": "^1.3.1"
   },

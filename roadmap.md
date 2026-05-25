@@ -2,81 +2,67 @@
 
 ---
 
-## Phase 1: Third Brain — Completamento
-**Status:** 🚧 In Progress
+## Phase 1: Third Brain ✅
+**Status:** Completato
 
-### Obiettivo
-Portare il Third Brain a uno stato pienamente utilizzabile: grafo associativo immutabile, navigazione senza query semantica, e agenti cognitivi completi per il flusso serale.
-
-### 1A — CLI `tb`
-
-- [x] **CLI entry point** (`tools/tb/src/cli.ts`): Binario `tb` con sottocomandi `save`, `search`, `update`, `browse`, `random`, `tags`, `start`, `stop`, `status`. Symlink in `~/.local/bin/tb`.
-
-- [x] **`tb start` / `stop` / `status`**: Lifecycle Qdrant via `docker compose`. `start` attende che Qdrant sia raggiungibile e avvisa se Ollama o il modello mancano.
-
-- [x] **Health check su ogni comando**: `requireServices()` controlla Qdrant e Ollama prima di ogni operazione. Exit code 1 con suggerimento `tb start`.
-
-- [x] **`tb save`**: Flag `--what`, `--why`, `--kind`, `--tags` (ripetibile o comma-separated), `--source`. Output JSON `{ id }`. Serendipità separata (`tb random`).
-
-- [x] **`tb search`**: Argomento posizionale `<query>`. Flag `--limit`, `--depth`, `--hybrid`, `--tags`, `--kind`, `--evidence-only`, `--include-hubs`. Output JSON array.
-
-- [x] **`tb update`**: Argomento posizionale `<id>`. Flag `--kind`, `--add-ref <id:reason>` (ripetibile, append-only). Output `{ id, updated: true }`.
-
-- [x] **`tb browse`**: Flag `--kind`, `--since` (ISO date), `--limit` (default 20). Usa Qdrant scroll API. Output JSON array.
-
-- [x] **`tb random`**: Restituisce una nota casuale usando nearest-neighbor su vettore random normalizzato. O(log n), non richiede Ollama.
-
-- [x] **`tb tags`**: Lista tutti i tag in uso ordinati per frequenza. Scroll paginato con payload `["tags"]`, aggregazione client-side.
-
-### 1B — Core del grafo
-
-- [x] **`backrefs`**: Campo `backrefs?: string[]` in `Note`. Aggiornato automaticamente da `appendBackref()` in `notes.ts` ad ogni `addRefs`.
-
-- [x] **`refs` append-only con limite 6**: `REFS_LIMIT = 6`. Errore esplicito che suggerisce di consolidare in un Hub.
-
-- [x] **Architettura a layer**: `cli → notes → qdrant → infra`. Nessuna dipendenza circolare. `qdrant.ts` è puro layer dati, `notes.ts` contiene tutta la business logic.
-
-- [x] **Hub escluse dalla ricerca diretta**: `buildSearchFilter` esclude `kind: "indice"` via `must_not` per default. Override con `--include-hubs`.
-
-- [x] **Hybrid search**: Dense + sparse (BM25-like) con RRF fusion via `--hybrid`.
-
-### 1C — Agenti cognitivi
-
-- [x] **Platone (Accrescitore della Memoria)**: Skill completa. Distillazione con Filtro di Feynman, vincoli di purezza semantica, regole tag (`tb tags` prima di scegliere, max 3, sostantivi singolari), regola `--source` (compila se fonte identificabile, ometti se conversazione), serendipità esplicita via `tb random` + `tb update --add-ref`.
-
-- [x] **Debate (Orchestratore dialettico)**: Skill che gestisce il loop `Oracolo → Socrate → Utente → Aristotele → Oracolo → ripeti`. Sostituisce Alfred eliminato nel refactor.
-
-- [x] **Socrate (Provocatore — Elenchos)**: Skill di attrito cognitivo. Interroga il Third Brain cercando contraddizioni, formula la domanda scomoda senza chiudere il ragionamento. Comandi: `tb search`, `tb browse`.
-
-- [x] **Aristotele (Curatore della Sintesi)**: Skill di codifica della conoscenza elaborata. Crea Hub (`kind: "indice"`), aggiunge refs. Comandi: `tb search`, `tb browse`, `tb save`, `tb update`.
-
-### 1D — Flusso Serale
-
-- [x] **Oracolo**: Skill di recupero contestuale. Interroga il Third Brain su un argomento e restituisce ciò che è già stato appreso, senza interpretare — usata da Debate e come entry point per la sessione.
-
-### 1E — Visualizzazione grafo
-
-- [x] **`tb graph`**: Server HTTP locale con grafo fisico D3. Layout PCA 2D per posizionamento iniziale dei nodi, forze fisiche per stabilizzazione, WebSocket per highlight in tempo reale dei nodi coinvolti nell'ultima operazione.
+CLI `tb` con save, search, update, browse, random, tags, graph. Grafo associativo immutabile con backrefs, hybrid search, Hub. Agenti cognitivi completi: Platone, Debate, Oracolo, Socrate, Aristotele.
 
 ---
 
-## Phase 2: Ciclo cognitivo completo
+## Phase 2: Third Hand (`th`) — Flow Engine
 **Status:** 🚧 In Progress
 
 ### Obiettivo
-Il Third Brain non è più solo uno store — è un sistema che genera attrito, sintetizza pattern e accompagna il pensiero nel tempo.
+Costruire un sistema di orchestrazione di agenti con identità cognitive divergenti (cappelli de Bono), flow di esecuzione configurabili, valutazione delle performance e ciclo evolutivo suggerito.
 
-### 2A — Agenti attivi nel loop serale
+La CLI si chiama `th` (Third Hand), simmetrica a `tb`. I cappelli de Bono vivono in `tools/alfred/hats/`. I membri del progetto in `.th/members/`, i membri temporanei in `/tmp/.th/members/`.
 
-- [x] **Debate (Orchestratore dialettico)**: Loop `Oracolo → Socrate → Utente → Aristotele → Oracolo → ripeti`. Gestisce il ciclo completo di confronto con il grafo.
+### 2A — Membro ✅
 
-- [ ] **Flusso serale guidato**: Sequenza standardizzata di fine giornata — Oracolo apre con una tensione, Socrate interroga, Platone distilla e salva.
+- [x] **`th member create <name>`**: Crea un membro con `--hat`, `--role`, `--tools`, `--skills`. Persiste in `.th/members/<name>.md` come frontmatter + system prompt (ruolo + hat).
+- [x] **`--tmp`**: Flag opzionale — salva il membro in `/tmp/.th/members/` invece del progetto. Utile per membri usa-e-getta.
+- [x] **`th member list`**: Lista membri del progetto corrente.
+- [x] **Risoluzione membro**: `getMember()` cerca prima in `.th/members/`, poi in `/tmp/.th/members/`.
 
-### 2B — Qualità del grafo
+### 2B — Esecuzione singola ✅
 
-- [ ] **Merge di note duplicate**: Rilevamento di note semanticamente sovrapposte (`tb search` + soglia coseno) e merge guidato.
+- [x] **`th run --member <name> --task "..."`**: Carica il membro, chiama `createAgentSession()` con system prompt override (ruolo + hat), tools e skills del membro. Streaming su stdout. `SessionManager.inMemory()`.
 
-- [ ] **Decay / review**: Flag note non referenziate da tempo per revisione o archiviazione.
+### 2C — Team
+
+- [ ] **`th team create <name>`**: Definisce un team come lista ordinata di member id. Persiste in `.th/teams/<name>.json`.
+- [ ] **`th team list`**: Lista team disponibili nel progetto.
+
+### 2D — Esecuzione sequenziale
+
+- [ ] **`th run --team <name> --task "..."`**: Carica il team, esegue i membri in sequenza. Ogni membro riceve il task + gli output dei membri precedenti. Stampa l'output complessivo al termine.
+
+### 2E — Tracking SQLite
+
+- [ ] **Layer dati**: SQLite via Bun. Schema: `runs`, `member_outputs`.
+- [ ] **`th history`**: Lista run passati con runId, team, task, timestamp.
+- [ ] **`th get <runId>`**: Output completo di un run — tutti i member output in ordine di esecuzione.
+
+### 2F — Flow avanzati
+
+- [ ] **Branch paralleli**: Membri in parallelo con `Promise.all()`, output mergiati prima del nodo successivo.
+- [ ] **Roundtable**: Round-robin per N round tra un set di membri.
+- [ ] **Conditional edges**: Routing dinamico basato su metriche o output.
+- [ ] **Human-in-the-loop**: Pausa del flow per input CLI.
+
+### 2G — Valutazione e evoluzione
+
+- [ ] **Judge node**: Valuta gli output dei membri, produce punteggi, può pilotare routing condizionale.
+- [ ] **`th scores`**: Report aggregato per cappello / team nel tempo.
+- [ ] **`th evolve <runId>`**: Suggerisce diff ai system prompt dei cappelli underperforming.
 
 ---
 
+## Phase 3: Integrazione Third Brain
+**Status:** Pianificata
+
+- [ ] **Briefing via Oracolo**: Prima di ogni run, `th run --brief` contestualizza il task interrogando `tb search`. L'output viene preposto al task per tutti i membri.
+- [ ] **Preservazione via Platone**: A run completato, `th run --preserve` distilla l'output nel Third Brain via `tb save`.
+- [ ] **Skill `th` aggiornata**: Aggiornare `skills/alfred/SKILL.md` per referenziare i comandi reali.
+
+---
