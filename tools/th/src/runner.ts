@@ -1,4 +1,7 @@
-import { openSync, writeSync, closeSync } from "node:fs";
+import { openSync, writeSync, closeSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { tmpdir, homedir } from "node:os";
+import { join } from "node:path";
 import {
   AuthStorage,
   createAgentSession,
@@ -10,7 +13,57 @@ import {
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { getModel, getProviders } from "@earendil-works/pi-ai";
 import type { KnownProvider } from "@earendil-works/pi-ai";
-import { loadMember } from "./members.js";
+import { loadMember, validateName } from "./members.js";
+
+// ─── Sandbox (bwrap) ──────────────────────────────────────────────────────────
+
+const BWRAP_SENTINEL = "TH_BWRAPPED";
+
+let _bwrapAvailable: boolean | null = null;
+function bwrapAvailable(): boolean {
+  if (_bwrapAvailable === null)
+    _bwrapAvailable = spawnSync("which", ["bwrap"], { stdio: "ignore" }).status === 0;
+  return _bwrapAvailable;
+}
+
+function makeBwrapArgs(cwd: string): string[] {
+  const home = homedir();
+  return [
+    "--ro-bind", "/", "/",
+    "--proc", "/proc",
+    "--dev", "/dev",
+    "--bind", cwd, cwd,
+    "--bind", `${home}/.pi`, `${home}/.pi`,
+    "--bind", "/tmp", "/tmp",
+    "--",
+  ];
+}
+
+function spawnSandboxed(
+  bin: string,
+  args: string[],
+  opts: Parameters<typeof spawn>[2],
+): ReturnType<typeof spawn> {
+  const cwd = process.cwd();
+  if (bwrapAvailable())
+    return spawn("bwrap", [...makeBwrapArgs(cwd), bin, ...args], {
+      ...opts,
+      env: { ...process.env, [BWRAP_SENTINEL]: "1" },
+    });
+  return spawn(bin, args, opts);
+}
+
+/** Re-exec the current process under bwrap. Never returns if bwrap is found. */
+export function tryReexecWithBwrap(): void {
+  if (process.env[BWRAP_SENTINEL]) return;
+  if (!bwrapAvailable()) return;
+  const r = spawnSync(
+    "bwrap",
+    [...makeBwrapArgs(process.cwd()), process.argv[0], process.argv[1], ...process.argv.slice(2)],
+    { stdio: "inherit", env: { ...process.env, [BWRAP_SENTINEL]: "1" } },
+  );
+  process.exit(r.status ?? 1);
+}
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
@@ -22,6 +75,30 @@ export async function listAvailableModels(): Promise<Array<{ provider: string; i
   const modelRegistry = ModelRegistry.create(authStorage);
   const available = await modelRegistry.getAvailable();
   return available.map((m) => ({ provider: m.provider, id: m.id, name: m.name }));
+}
+
+export function makeJobPaths(memberName: string): { base: string; out: string; log: string; status: string } {
+  validateName(memberName);
+  const base = join(tmpdir(), `th-${memberName}-${Date.now()}`);
+  return { base, out: `${base}.out`, log: `${base}.log`, status: `${base}.status` };
+}
+
+export function spawnDetached(
+  memberName: string,
+  rawArgs: string[],
+  execPath: string,
+  scriptPath: string,
+): { pid: number | undefined; out: string; log: string; status: string } {
+  const paths = makeJobPaths(memberName);
+  writeFileSync(paths.status, "running");
+
+  const args = rawArgs.filter((a) => a !== "--detach");
+  if (!args.includes("--output")) args.push("--output", paths.out);
+
+  const child = spawnSandboxed(execPath, [scriptPath, ...args], { detached: true, stdio: "ignore" });
+  child.unref();
+
+  return { pid: child.pid, out: paths.out, log: paths.log, status: paths.status };
 }
 
 function truncate(str: string, max: number): string {
@@ -81,7 +158,12 @@ export async function runMember(
     ...(thinkingLevel ? { thinkingLevel: thinkingLevel as ThinkingLevel } : {}),
   });
 
-  const logPath = `/tmp/th-${memberName}-${Date.now()}.log`;
+  const paths = outputPath
+    ? { out: outputPath, log: outputPath.replace(/\.out$/, ".log"), status: outputPath.replace(/\.out$/, ".status") }
+    : makeJobPaths(memberName);
+  const logPath = paths.log;
+  const statusPath = outputPath ? paths.status : null;
+
   const logFd = openSync(logPath, "w");
   const outputFd = outputPath ? openSync(outputPath, "w") : null;
 
@@ -128,6 +210,10 @@ export async function runMember(
     }
 
     emit("\n");
+    if (statusPath) writeFileSync(statusPath, "done");
+  } catch (err) {
+    if (statusPath) writeFileSync(statusPath, `error: ${err instanceof Error ? err.message : String(err)}`);
+    throw err;
   } finally {
     closeSync(logFd);
     if (outputFd !== null) closeSync(outputFd);

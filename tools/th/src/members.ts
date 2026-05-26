@@ -25,7 +25,7 @@ const TMP_MEMBERS_DIR = join("/tmp", ".th", "members");
 
 const SAFE_NAME_RE = /^[a-zA-Z0-9_-]+$/;
 
-function validateName(name: string): void {
+export function validateName(name: string): void {
   if (!SAFE_NAME_RE.test(name)) {
     throw new Error(`Nome non valido: "${name}". Usa solo lettere, cifre, "-" e "_".`);
   }

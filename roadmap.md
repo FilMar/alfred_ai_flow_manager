@@ -38,8 +38,10 @@ La CLI si chiama `th` (Third Hand), simmetrica a `tb`. I cappelli de Bono vivono
 - [x] **`--model <provider/id>`**: Sceglie il modello da usare (es. `anthropic/claude-opus-4-7`). Facoltativo — default dal settings di pi.
 - [x] **`--output <file>`**: Salva il risultato su file oltre che su stdout. Utile per passare l'output tra membri in esecuzione sequenziale.
 - [x] **`--timeout <secondi>`**: Aborta la sessione con `session.abort()` se il run supera il limite. Validazione: intero positivo — errore esplicito su input non valido.
+- [x] **`--detach`**: Esegue in background; ritorna subito `{ pid, out, log, status }`. Il processo figlio scrive lo status (`running` → `done` / `error: ...`) e l'output su file in `/tmp`.
 - [x] **`th models`**: Lista i modelli disponibili con API key configurata.
 - [x] **File descriptor safety**: `try/finally` garantisce la chiusura dei fd di log e output anche in caso di errore o abort.
+- [x] **Sandbox bwrap**: Ogni `th run` viene automaticamente eseguito dentro un container bwrap se disponibile. Filesystem read-only tranne `cwd`, `~/.pi` e `/tmp`. L'agente non può scrivere fuori dal progetto.
 
 ### 2C — Team
 

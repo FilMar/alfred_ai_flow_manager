@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { Command } from "commander";
 import { createMember, deleteMember, getHat, getMember, listHats, listMembers } from "./members.js";
-import { listAvailableModels, runMember } from "./runner.js";
+import { listAvailableModels, runMember, spawnDetached, tryReexecWithBwrap } from "./runner.js";
 
 // ─── Output helpers ───────────────────────────────────────────────────────────
 
@@ -122,12 +122,20 @@ program
   .option("--thinking <level>", "Livello di thinking esteso (off, minimal, low, medium, high, xhigh)")
   .option("--model <provider/id>", "Modello da usare (es. anthropic/claude-opus-4-7)")
   .option("--output <file>", "Salva il risultato su file (oltre che su stdout)")
+  .option("--detach", "Esegui in background; ritorna subito i path di out/log/status")
   .option("--timeout <secondi>", "Timeout in secondi — aborta la sessione se superato", (v) => {
     const n = parseInt(v, 10);
     if (isNaN(n) || n <= 0) throw new Error(`--timeout deve essere un intero positivo (ricevuto: "${v}")`);
     return n;
   })
   .action(async (opts) => {
+    if (opts.detach) {
+      out(spawnDetached(opts.member, process.argv.slice(2), process.argv[0], process.argv[1]));
+      return;
+    }
+
+    tryReexecWithBwrap();
+
     try {
       await runMember(opts.member, opts.task, opts.thinking, opts.model, opts.output, opts.timeout);
     } catch (err) {
