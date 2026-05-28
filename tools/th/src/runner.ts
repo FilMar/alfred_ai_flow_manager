@@ -1,7 +1,7 @@
-import { openSync, writeSync, closeSync, writeFileSync } from "node:fs";
+import { openSync, writeSync, closeSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { tmpdir, homedir } from "node:os";
-import { join } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import {
   AuthStorage,
   createAgentSession,
@@ -9,6 +9,7 @@ import {
   getAgentDir,
   ModelRegistry,
   SessionManager,
+  type Skill,
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { getModel, getProviders } from "@earendil-works/pi-ai";
@@ -68,6 +69,21 @@ export function tryReexecWithBwrap(): void {
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+
+function loadSkillFromPath(skillPath: string): Skill {
+  const abs = resolve(skillPath);
+  const filePath = existsSync(join(abs, "SKILL.md")) ? join(abs, "SKILL.md") : abs;
+  if (!existsSync(filePath)) throw new Error(`Skill non trovata: ${skillPath}`);
+  const content = readFileSync(filePath, "utf8");
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) throw new Error(`Frontmatter YAML mancante in: ${filePath}`);
+  const fm = match[1];
+  const name = fm.match(/^name:\s*(.+)$/m)?.[1]?.trim();
+  const desc = fm.match(/^description:\s*(.+)$/m)?.[1]?.trim();
+  if (!name) throw new Error(`Campo 'name' mancante nel frontmatter di: ${filePath}`);
+  if (!desc) throw new Error(`Campo 'description' mancante nel frontmatter di: ${filePath}`);
+  return { name, description: desc, filePath, baseDir: dirname(filePath), source: "custom" };
+}
 const LOG_RESULT_MAX = 500;
 
 export async function listAvailableModels(): Promise<Array<{ provider: string; id: string; name: string }>> {
@@ -112,6 +128,7 @@ export async function runMember(
   modelStr?: string,
   outputPath?: string,
   timeoutSec?: number,
+  skillPaths?: string[],
 ): Promise<void> {
   if (thinkingLevel && !THINKING_LEVELS.includes(thinkingLevel as ThinkingLevel)) {
     throw new Error(`Thinking level non valido: "${thinkingLevel}". Valori accettati: ${THINKING_LEVELS.join(", ")}`);
@@ -131,17 +148,18 @@ export async function runMember(
   }
   const { member, systemPrompt } = loadMember(memberName);
 
+  const injectedSkills: Skill[] = (skillPaths ?? []).map(loadSkillFromPath);
+
   const loader = new DefaultResourceLoader({
     cwd: process.cwd(),
     agentDir: getAgentDir(),
     systemPromptOverride: () => systemPrompt,
-    skillsOverride:
-      member.skills.length > 0
-        ? (current) => ({
-            skills: current.skills.filter((s) => member.skills.includes(s.name)),
-            diagnostics: current.diagnostics,
-          })
-        : undefined,
+    skillsOverride: (current) => {
+      const filtered = member.skills.length > 0
+        ? current.skills.filter((s) => member.skills.includes(s.name))
+        : current.skills;
+      return { skills: [...filtered, ...injectedSkills], diagnostics: current.diagnostics };
+    },
   });
   await loader.reload();
 

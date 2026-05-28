@@ -1,0 +1,25 @@
+
+● Bash(tb search "memoria rinarrazione valori k-level" --depth 2 --include-hubs --limit 8 2>/dev/null | python3 -c "
+      import json, sys…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "<string>", line 3, in <module>
+         data = json.load(sys.stdin)
+       File "/usr/lib/python3.14/json/__init__.py", line 298, in load
+         return loads(fp.read(),
+             cls=cls, object_hook=object_hook,
+             parse_float=parse_float, parse_int=parse_int,
+             parse_constant=parse_constant, object_pairs_hook=object_pairs_hook, **kw)
+       File "/usr/lib/python3.14/json/__init__.py", line 352, in loads
+     … +8 lines (ctrl+o to expand)
+
+● Bash(tb search "memoria rinarrazione valori k-level" --depth 2 --include-hubs --limit 8 2>/dev/null | head -60)
+  ⎿  (No output)
+
+● Bash(tb search "rinarrazione valori auto-analisi" --hybrid --limit 6 2>&1 | head -80)
+  ⎿  Error: 400 {"status":{"error":"Format error in JSON body: value f82083b3 is not a valid point ID, valid values are either an unsigned integer or a UUID at line 1 column 216"},"time":0.0}
+
+● Bash(tb search "valori auto-analisi" --limit 5 2>&1 | head -60)
+  ⎿  Error: 400 {"status":{"error":"Format error in JSON body: value f82083b3 is not a valid point ID, valid values are either an unsigned integer or a UUID at line 1 column 177"},"time":0.0}
+
+● Bash(tb search "rinarrazione" --limit 3 2>

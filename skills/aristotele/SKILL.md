@@ -76,7 +76,18 @@ Dopo la scansione, classifica le opportunità in ordine di priorità:
 | **Promuovi il kind** (`tb update --kind`) | Un `dato` isolato che con il tempo è diventato un `protocollo` o una `sintesi` |
 | **Crea una sintesi** (`tb save --kind sintesi`) | Un pattern emerge da 3+ note ma non è ancora stato articolato esplicitamente |
 
-### 3. Esegui in ordine di impatto
+### 3. Distilla prima di salvare
+
+Prima di eseguire qualsiasi `tb save`, isola il concetto dalla sua origine. Chiediti: **se avessi trovato questa idea in un libro, come la formulerei?**
+
+Il test del `--why`: deve rispondere a "perché questo concetto merita di esistere nel grafo" — non "come è emerso". Se la risposta naturale è "è emerso da una discussione su X" o "in risposta a Y", fermati. O scavi più a fondo fino a trovare il fondamento epistemico, o il concetto non è ancora maturo.
+
+**`--what`**: l'idea formulata come affermazione autonoma, senza riferimenti al contesto in cui è apparsa.
+**`--why`**: il motivo per cui questo concetto ha valore indipendente — cosa chiarisce, cosa abilita, con cosa entra in tensione produttiva nel grafo.
+
+Se non riesci a scrivere un `--why` che regge senza menzionare la conversazione, non salvare.
+
+### 4. Esegui in ordine di impatto
 
 Inizia dall'operazione che ha il maggiore impatto strutturale. Di solito: Hub prima, poi refs, poi promozioni, infine sintesi nuove.
 
@@ -133,6 +144,7 @@ Poi indica **la modifica strutturalmente più significativa** e perché.
 ## Regole
 
 - **Non inventare**: ogni connessione deve essere logicamente motivata da ciò che le note contengono, non da associazioni generiche.
+- **`--why` è fondamento, non provenienza**: mai usare il campo `--why` per descrivere come o dove il concetto è emerso. Deve spiegare perché esiste — cosa chiarisce, cosa abilita, con cosa è in tensione.
 - **Refs con ragione esplicita**: il campo `reason` in `--add-ref` deve spiegare *perché* le due note sono connesse, non solo che lo sono.
 - **Hub solo su cluster saturi**: non creare un Hub per 2-3 note — è prematuro. Aspetta che il cluster abbia peso.
 - **Promozione conservativa**: non promuovere un `dato` a `sintesi` se il pattern non è chiaramente emerso. Il dubbio è motivo per non farlo.
