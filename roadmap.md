@@ -55,11 +55,10 @@ La CLI si chiama `th` (Third Hand), simmetrica a `tb`. I cappelli de Bono vivono
 ## Phase 3: Integrazione Third Brain ← prossima
 **Status:** Pianificata
 
-Contestualizza ogni run `th` con la conoscenza sedimentata nel TB. Va fatto prima di usare Alfred seriamente.
+Alfred già interroga `tb search` prima di ogni flow. Manca la parte di preservazione: a flow completato, Platone distilla l'output nel TB.
 
-- [ ] **Briefing via Oracolo**: Prima di ogni run, `th run --brief` interroga `tb search` e prepone il contesto al task.
-- [ ] **Preservazione via Platone**: A run completato, `th run --preserve` distilla l'output nel TB via `tb save`.
-- [ ] **Skill alfred aggiornata**: Referenziare i nuovi flag nella skill una volta implementati.
+- [ ] **Platone interattivo**: refactor della skill Platone — propone nota + connessioni, utente conferma/modifica/aggiunge refs, poi salva.
+- [ ] **Feynman**: nuova skill — recupera materiale TB su un argomento e lo insegna con la tecnica Feynman.
 
 ---
 
