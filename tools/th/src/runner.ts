@@ -121,6 +121,15 @@ function truncate(str: string, max: number): string {
   return str.length > max ? str.slice(0, max) + `… [+${str.length - max} chars]` : str;
 }
 
+function tbSearch(query: string): string {
+  const r = spawnSync("tb", ["search", query, "--limit", "5", "--depth", "1"], { encoding: "utf8" });
+  return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : "";
+}
+
+function tbSave(what: string, why: string): void {
+  spawnSync("tb", ["save", "--what", what, "--why", why], { stdio: "inherit" });
+}
+
 export async function runMember(
   memberName: string,
   task: string,
@@ -129,6 +138,8 @@ export async function runMember(
   outputPath?: string,
   timeoutSec?: number,
   skillPaths?: string[],
+  brief?: boolean,
+  preserve?: boolean,
 ): Promise<void> {
   if (thinkingLevel && !THINKING_LEVELS.includes(thinkingLevel as ThinkingLevel)) {
     throw new Error(`Thinking level non valido: "${thinkingLevel}". Valori accettati: ${THINKING_LEVELS.join(", ")}`);

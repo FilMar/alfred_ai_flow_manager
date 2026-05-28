@@ -123,6 +123,7 @@ program
   .option("--model <provider/id>", "Modello da usare (es. anthropic/claude-opus-4-7)")
   .option("--output <file>", "Salva il risultato su file (oltre che su stdout)")
   .option("--detach", "Esegui in background; ritorna subito i path di out/log/status")
+  .option("--skill <path>", "Inietta una skill da path (ripetibile)", (v, acc: string[]) => [...acc, v], [] as string[])
   .option("--timeout <secondi>", "Timeout in secondi — aborta la sessione se superato", (v) => {
     const n = parseInt(v, 10);
     if (isNaN(n) || n <= 0) throw new Error(`--timeout deve essere un intero positivo (ricevuto: "${v}")`);
@@ -137,7 +138,7 @@ program
     tryReexecWithBwrap();
 
     try {
-      await runMember(opts.member, opts.task, opts.thinking, opts.model, opts.output, opts.timeout);
+      await runMember(opts.member, opts.task, opts.thinking, opts.model, opts.output, opts.timeout, opts.skill);
     } catch (err) {
       die(errorMessage(err));
     }
