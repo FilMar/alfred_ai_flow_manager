@@ -5,7 +5,8 @@
   "private": true,
   "bin": {
     "tb": "./tools/tb/src/cli.ts",
-    "th": "./tools/th/src/cli.ts"
+    "th": "./tools/th/src/cli.ts",
+    "td": "./tools/td/src/cli.ts"
   },
   "scripts": {
     "typecheck": "tsc --project tools/tb/tsconfig.json --noEmit"

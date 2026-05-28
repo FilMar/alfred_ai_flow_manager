@@ -52,37 +52,37 @@ La CLI si chiama `th` (Third Hand), simmetrica a `tb`. I cappelli de Bono vivono
 
 ---
 
-## Phase 3: Integrazione Third Brain ← prossima
-**Status:** Pianificata
+## Phase 3: Integrazione Third Brain ✅
+**Status:** Completato
 
-Alfred già interroga `tb search` prima di ogni flow. Manca la parte di preservazione: a flow completato, Platone distilla l'output nel TB.
+Alfred interroga `tb search` prima di ogni flow. Platone è interattivo: propone nota + connessioni, utente conferma/modifica/aggiunge refs, poi salva. Feynman insegna il corpus con la tecnica Feynman.
 
-- [ ] **Platone interattivo**: refactor della skill Platone — propone nota + connessioni, utente conferma/modifica/aggiunge refs, poi salva.
-- [ ] **Feynman**: nuova skill — recupera materiale TB su un argomento e lo insegna con la tecnica Feynman.
-
----
-
-## Phase 4: GTD Task Manager ← dopo Phase 3
-**Status:** Pianificata
-
-Skill locale per project e task management stile GTD. Dati su SQLite. Collo di bottiglia operativo più immediato per un solo fondatore.
-
-- [ ] Liste: inbox, next actions, progetti, waiting, someday
-- [ ] Capture rapido di task dalla conversazione
-- [ ] Sessioni di lavoro contestualizzate (2 ore di focus → cosa faccio?)
-- [ ] Weekly review strutturata
-- [ ] Integrazione con Third Brain per contestualizzare priorità rispetto agli obiettivi
+- [x] **Platone interattivo**: propone nota + connessioni, aspetta conferma, applica modifiche, salva.
+- [x] **Feynman**: recupera materiale TB su un argomento e lo insegna a tre livelli (nucleo / meccanismi / tensioni), dichiara i gap.
 
 ---
 
-## Phase 5: Calendario (Google Calendar) ← dopo GTD
+## Phase 4: GTD Task Manager (`td`) ✅
+**Status:** Completato
+
+CLI `td` (Third Done) con SQLite + colonna JSON per flessibilità senza migration. DB globale in `~/.pi/td.db`. Due tabelle: `projects` (id, name, start, goal_end, real_end, data) e `tasks` (id, list, project_id, done_at, created_at, data). Link tra task via array in `data.links`.
+
+- [x] CLI `td` con `add`, `inbox`, `next`, `waiting`, `someday`, `list`, `move`, `done`, `get`
+- [x] Gestione progetti: `td project add/list/done`
+- [x] Symlink in `~/.local/bin/td` — setup.sh aggiornato
+- [x] Skill `taiichi` — capture, processing inbox, sessioni di lavoro, weekly review
+
+---
+
+## Phase 5: Google Workspace (`gws`) ← prossima
 **Status:** Pianificata
 
-Skill dedicata alla gestione del tempo. Esegue le priorità che il GTD ha già stabilito — ha senso solo dopo.
+Layer comune basato su `gws` (Google Workspace CLI ufficiale) — un solo auth OAuth per tutti i servizi Google. Ogni skill usa `--dry-run` + conferma esplicita prima di operazioni distruttive (invia, cancella).
 
-- [ ] Inserimento eventi, scadenze, appuntamenti
-- [ ] Riorganizzazione slot su richiesta
-- [ ] Integrazione con GTD: *"schedula 2 ore per questo task"* → trova slot libero e lo piazza in calendario
+- [ ] **Setup `gws`**: installazione + auth OAuth con keyring di sistema
+- [ ] **Skill calendario**: inserimento eventi, agenda, riorganizzazione slot, integrazione con Taiichi (*"schedula 2 ore per questo task"*)
+- [ ] **Skill Gmail**: triage inbox, risposta, inoltro — con dry-run obbligatorio prima di ogni invio
+- [ ] **Skill spese**: lettura e scrittura su Google Sheets — traccia entrate/uscite, aggregazioni mensili
 
 ---
 
@@ -117,26 +117,20 @@ Skill operativa che usa `th run` per orchestrare agenti con cappelli de Bono. Du
 - **Sequenziale**: ogni membro legge l'output del precedente e ci costruisce sopra
 - **Parallelo**: membri lanciati con `--detach`, poll sui file di output, poi sintetizzati dal Blu
 
-### Platone (Accrescitore) — refactor interattivo
+### Platone (Accrescitore) ✅
 
-Attualmente Platone decide autonomamente framing e tag. Va reso interattivo: propone, l'utente conferma/modifica, poi salva. Il round di conferma è già apprendimento — leggere la proposta e riformulare il *why* forza a processare l'idea. L'utente può anche aggiungere connessioni (`refs`) che Platone non vedrebbe: link trasversali e non ovvi che Aristotele poi consolida.
+Flow interattivo: propone nota (what, why, kind, tags) + connessioni trovate nel TB → utente conferma/modifica/aggiunge refs → salva. Una nota alla volta.
 
-Flow target:
-1. Platone propone nota (what, why, kind, tags)
-2. Propone connessioni trovate nel TB via ricerca semantica
-3. Utente conferma/modifica, aggiunge refs che vede lui
-4. Salva
+### Feynman (Professore del Corpus) ✅
 
-### Feynman (Professore del Corpus)
+Recupera materiale TB con query multiple, spiega a tre livelli (nucleo / meccanismi / tensioni), dichiara i gap esplicitamente. Complementare a Socrate: Feynman costruisce la comprensione, Socrate la stressa.
 
-Il TB è più grande di ciò che l'utente riesce a processare coscientemente — è un corpus, non una memoria personale. Feynman è l'interfaccia didattica: dato un argomento, recupera tutto il materiale rilevante dal TB e lo *insegna*, usando la tecnica Feynman come metodo (spiega semplice → identifica dove la spiegazione si rompe → approfondisce il gap).
+### Taiichi (GTD) ✅
 
-Non presuppone che l'utente sappia già cosa c'è dentro. Caso d'uso tipico: inserisci 10 ore di trascrizioni/note su un tema, poi chiedi a Feynman di spiegartelo da zero — lui sintetizza il corpus in una spiegazione progressiva.
+Skill operativa per il GTD personale via `td`. Quattro momenti: capture → processing inbox → sessione di lavoro → weekly review.
 
-Complementare a Socrate: Feynman prima (costruisce comprensione dal corpus), Socrate dopo (stressa la comprensione sotto pressione).
+### Emotion (Scrum PM — ClickUp) ✅
 
-### Emotion (Scrum PM — ClickUp)
-
-Skill per gestire il lavoro da Scrum PM su ClickUp: sprint, liste, creazione e approfondimento task. Scope limitato allo spazio Emotion. Da definire: autenticazione API key, operazioni prioritarie (sprint board, task creation, task detail).
+Skill per gestire il lavoro da Scrum PM su ClickUp nello space Sviluppo. Sprint, backlog, inbox: crea task, aggiorna stati e custom field, approfondisce description, commenta con menzioni, collega task tra loro. Workflow sprint: move (non add to list) — i task hanno il sprint come lista primaria, a fine sprint i chiusi restano come archivio, gli aperti tornano in backlog.
 
 ---

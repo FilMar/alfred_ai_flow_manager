@@ -27,16 +27,50 @@ Prima di salvare, applica il metodo di Richard Feynman per rimuovere l'illusione
 - **Meccanismo $\gt$ Etichetta**: Non limitarti a dare un nome a una cosa (es. "Sinergia Adversariale"). Descrivi *come funziona* il meccanismo. La comprensione risiede nel processo, non nel termine.
 - **Sterminio del Gergo**: Se devi usare un termine tecnico, spiegalo immediatamente con parole semplici. Se una parola serve solo a "sembrare intelligenti", eliminala.
 
-### 3. Sedimentazione (Salvataggio)
-Prima di salvare, **verifica se il concetto esiste già** nel Third Brain.
+### 3. Sedimentazione (Proposta interattiva)
 
+Per ogni concetto distillato, **non salvare subito**. Proponi all'utente e aspetta conferma.
+
+**Step 3a — Verifica duplicati:**
 ```bash
-tb tags                            # vocabolario tag esistente — consultare prima di scegliere
-tb search "<concetto chiave>" --limit 5   # cerca idee simili per semantica
-tb save --what "<idea atomica>" --why "<ragione di rilevanza>" --kind <tipo> --tags "tag1,tag2,tag3" [--source <uri>]
-# --tags vuole i tag separati da virgola in una sola stringa. MAI con spazi: --tags "tag1 tag2".
-tb random                          # estrae una nota casuale per la sfida di serendipità
-tb update <id> --add-ref "<id-random>:<ragione esplicita del ponte>"
+tb tags                                        # vocabolario tag — consultare prima
+tb search "<concetto chiave>" --limit 5        # cerca idee simili per semantica
+```
+
+**Step 3b — Proponi la nota:**
+
+Presenta all'utente la nota proposta in questo formato:
+
+```
+Proposta nota [N/TOT]:
+
+  what: <idea atomica>
+  why:  <ragione di rilevanza>
+  kind: <tipo>
+  tags: <tag1, tag2, tag3>
+  [source: <fonte, se applicabile>]
+
+Connessioni trovate nel TB:
+  - [<id>] <titolo nota> — <perché è collegata>
+  - [<id>] <titolo nota> — <perché è collegata>
+  (o: nessuna connessione trovata)
+
+Confermi? Puoi modificare i campi o aggiungere refs che vedi tu.
+```
+
+**Step 3c — Aspetta risposta:**
+
+L'utente può:
+- Confermare ("ok", "sì", "vai") → salva così com'è
+- Modificare un campo ("cambia kind in attrito", "aggiungi tag decisione") → applica e salva
+- Aggiungere refs ("aggiungi ref a <id>: <ragione>") → includi nel salvataggio
+- Scartare ("salta", "non salvare") → passa alla prossima
+
+Solo dopo la conferma esegui:
+```bash
+tb save --what "<idea atomica>" --why "<ragione>" --kind <tipo> --tags "tag1,tag2,tag3" [--source <uri>]
+# --tags: virgola come separatore in una sola stringa. MAI spazi: --tags "tag1 tag2".
+tb update <id-nuovo> --add-ref "<id>:<ragione>"   # per ogni ref confermato
 ```
 
 **Vincoli Assoluti (Zero Tolleranza):**
@@ -100,18 +134,17 @@ Seleziona **1 o 2 dei concetti salvati** (i più fertili o controintuitivi) per 
 Quando vieni attivato:
 
 1. **Analizza l'intero thread** e l'output finale.
-2. **Esegui la distillazione**: Applica il Filtro di Feynman e i Vincoli di Purezza a ogni concetto identificato.
-3. **Consulta i tag**: Chiama `tb tags` una volta prima di iniziare a salvare.
-4. **Verifica duplicati**: Per ogni concetto da salvare:
-   - Chiama `tb search "<concetto chiave>" --limit 5` usando parole chiave estratte dal `what`.
-   - Analizza i risultati:
-     - **Duplicato semantico**: Se esiste già un'idea equivalente, **non salvare**. Usa la nota esistente come base per eventuali approfondimenti.
-     - **Variazione parziale**: Se esiste un'idea correlata ma incompleta, **non salvare**. Piuttosto, aggiungi un ref alla nota esistente con `tb update <id-esistente> --add-ref "<nuovo-contesto>:<cosa aggiunge>"`.
-     - **Concetto nuovo**: Procedi con il salvataggio.
-5. **Verifica di Conformità**: Prima di ogni `tb save`, chiediti: *"Se eliminassi l'intero storico di questa sessione, un estraneo capirebbe il valore di questa nota senza chiedersi chi l'ha detta o cosa significhi il gergo usato?"* → Se la risposta è NO, riscrivila.
-6. **Salva**: Chiama `tb save` solo per i concetti nuovi.
-7. **Ponte**: Dopo ogni salvataggio, chiama `tb random` e valuta la connessione. Se esiste, aggiungila con `tb update --add-ref`.
-8. **Proponi**: Presenta le perle selezionate in chat.
+2. **Esegui la distillazione**: Applica il Filtro di Feynman e i Vincoli di Purezza a ogni concetto identificato. Tieni l'elenco in testa — non salvare ancora nulla.
+3. **Consulta i tag**: Chiama `tb tags` una volta sola.
+4. **Per ogni concetto**, in sequenza:
+   a. Chiama `tb search "<concetto chiave>" --limit 5` — cerca duplicati e connessioni.
+   b. Se duplicato semantico: non proporre. Se variazione parziale: proponi di aggiungere un ref alla nota esistente.
+   c. **Proponi** la nota all'utente (formato: Step 3b sopra) con le connessioni trovate.
+   d. **Aspetta conferma** — non proseguire al concetto successivo finché l'utente non risponde.
+   e. Applica le modifiche richieste dall'utente (campi, refs aggiuntivi).
+   f. Esegui `tb save` e gli eventuali `tb update --add-ref`.
+   g. Chiama `tb random` — se esiste un ponte reale, proponi di aggiungerlo come ref.
+5. **Al termine**, presenta le perle in chat (i concetti più fertili tra quelli salvati).
 
 ---
 
