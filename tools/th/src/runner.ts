@@ -35,7 +35,9 @@ function makeBwrapArgs(cwd: string): string[] {
     "--dev", "/dev",
     "--bind", cwd, cwd,
     "--bind", `${home}/.pi`, `${home}/.pi`,
+    "--bind", `${home}/.bun`, `${home}/.bun`,
     "--bind", "/tmp", "/tmp",
+    "--setenv", "HOME", home,
     "--",
   ];
 }
