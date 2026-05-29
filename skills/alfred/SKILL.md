@@ -134,5 +134,3 @@ Dopo l'ultimo membro (tipicamente il Blu), leggi tutti gli output e presenta una
 - **Non partire senza conferma del flow.** L'utente deve sapere cosa sta per succedere.
 - **Non usare più cappelli del necessario.** Tre membri focalizzati valgono più di sei generici.
 - **Il Blu chiude sempre.** Se c'è divergenza tra i cappelli, il membro Blu sintetizza e decide. Non lasciare il flow aperto.
-- **I membri temporanei vanno rimossi** se non servono più. Usa `th member delete <nome>` a fine sessione, o chiedi all'utente se vuole tenerli.
-- **Se il task è semplice**, di' all'utente che non serve un team — un singolo membro o una risposta diretta è più efficiente.

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Third Brain — Graph</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; color: #fff; font-family: monospace; }
+    canvas { display: block; }
+    #status { position: fixed; top: 12px; left: 12px; font-size: 12px; color: #555; }
+    #controls { position: fixed; top: 12px; right: 12px; }
+    #controls select {
+      background: #111; color: #aaa; border: 1px solid #333;
+      font-family: monospace; font-size: 12px; padding: 4px 8px; cursor: pointer;
+    }
+    #card {
+      position: fixed; top: 0; left: 0;
+      width: 480px; max-height: 80vh;
+      background: #0d0d0d; border: 1px solid #333; border-radius: 10px;
+      padding: 20px; font-family: monospace; font-size: 13px; color: #ccc;
+      z-index: 10; pointer-events: none;
+      transform: scale(0); opacity: 0;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.15s ease;
+    }
+    #card.open { transform: scale(1); opacity: 1; pointer-events: auto; }
+    #card-close {
+      position: absolute; top: 10px; right: 14px;
+      background: none; border: none; color: #555; font-size: 16px; cursor: pointer;
+    }
+    #card-close:hover { color: #fff; }
+    #card-kind { font-size: 11px; color: #555; margin-bottom: 12px; }
+    #card-what { color: #fff; margin-bottom: 12px; line-height: 1.5; }
+    #card-why  { color: #888; margin-bottom: 16px; line-height: 1.5; font-style: italic; }
+    #card-refs { border-top: 1px solid #222; padding-top: 12px; }
+    #card-refs a {
+      display: block; color: #4e9af1; text-decoration: none;
+      margin-bottom: 6px; cursor: pointer;
+    }
+    #card-refs a:hover { color: #fff; }
+    #card-tags { font-size: 11px; color: #444; margin-bottom: 12px; }
+    #legend {
+      position: fixed; bottom: 16px; left: 16px;
+      font-family: monospace; font-size: 11px; color: #555;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    #search-wrap {
+      position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+      z-index: 20;
+    }
+    #search {
+      background: #111; color: #ccc; border: 1px solid #333; border-radius: 6px;
+      font-family: monospace; font-size: 12px; padding: 4px 10px;
+      width: 260px; outline: none;
+    }
+    #search:focus { border-color: #555; }
+    #search::placeholder { color: #444; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="status">caricamento...</div>
+  <div id="search-wrap">
+    <input id="search" type="text" placeholder="cerca..." autocomplete="off" spellcheck="false" />
+  </div>
+  <div id="card">
+    <button id="card-close">✕</button>
+    <div id="card-kind"></div>
+    <div id="card-tags"></div>
+    <div id="card-what"></div>
+    <div id="card-why"></div>
+    <div id="card-refs"></div>
+  </div>
+  <div id="controls">
+    <select id="profile">
+      <option value="link">link</option>
+      <option value="embed">embed</option>
+      <option value="life">life</option>
+    </select>
+  </div>
+  <div id="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#4e9af1"></div>dato</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f1c84e"></div>protocollo</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#a78bfa"></div>sintesi</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f87171"></div>attrito</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#34d399"></div>configurazione</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#fb923c"></div>indice</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="graph.js"></script>
+</body>
+</html>

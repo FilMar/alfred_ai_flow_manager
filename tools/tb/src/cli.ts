@@ -1,13 +1,12 @@
 #!/usr/bin/env bun
 import { Command } from "commander";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { checkHealth, EMBED_MODEL } from "./infra.js";
+import { serveGraph, GRAPH_PORT } from "./graph/server.js";
 import { createNote, addRefs, changeKind, searchNotes, browseNotes, randomNote, listNoteTags } from "./notes.js";
-import { serveGraph, GRAPH_PORT_FILE } from "./graph.js";
 import type { NoteType, SearchOptions } from "./types.js";
 import { NOTE_TYPES } from "./types.js";
 
@@ -68,19 +67,6 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-async function notifyGraph(ids: string[]): Promise<void> {
-  try {
-    const port = readFileSync(GRAPH_PORT_FILE, "utf8").trim();
-    await fetch(`http://localhost:${port}/highlight`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids }),
-      signal: AbortSignal.timeout(400),
-    });
-  } catch {
-    // graph server not running — silent
-  }
-}
 
 // ─── Programma ────────────────────────────────────────────────────────────────
 
@@ -215,7 +201,6 @@ program
 
     const results = await searchNotes(query, options);
     out(results);
-    void notifyGraph(results.map((r) => r.note.id));
   });
 
 // ─── update ───────────────────────────────────────────────────────────────────
@@ -286,15 +271,14 @@ program
 
 program
   .command("graph")
-  .description("Visualizza il grafo del Third Brain nel browser (PCA 2D + WebSocket)")
-  .option("--port <n>", "Porta del server HTTP", "7333")
-  .action(async (opts) => {
+  .description("Visualizza il grafo del Third Brain nel browser")
+  .action(async () => {
     await requireServices({ needsEmbedding: false });
-    try {
-      await serveGraph(parseInt(opts.port, 10));
-    } catch (err) {
-      die(errorMessage(err));
-    }
+    serveGraph();
+    const url = `http://localhost:${GRAPH_PORT}`;
+    process.stdout.write(`Graph: ${url}\n`);
+    spawnSync("xdg-open", [url], { stdio: "ignore" });
+    await new Promise(() => {}); // tieni in vita il processo
   });
 
 // ─── Parse ───────────────────────────────────────────────────────────────────

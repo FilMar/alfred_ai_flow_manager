@@ -350,6 +350,13 @@ export interface ScrollOptions {
   limit?: number;
 }
 
+type ScrollResponse<V> = {
+  result: {
+    points: Array<{ payload: Note; vector: V }>;
+    next_page_offset: string | null;
+  };
+};
+
 export async function scroll(options: ScrollOptions = {}): Promise<Note[]> {
   const must: unknown[] = [];
   if (options.kind) must.push({ key: "kind", match: { value: options.kind } });
@@ -362,11 +369,41 @@ export async function scroll(options: ScrollOptions = {}): Promise<Note[]> {
   };
   if (must.length > 0) body.filter = { must };
 
-  const data = await qdrantClient.request<{ result: { points: Array<{ payload: Note }> } }>(
+  const data = await qdrantClient.request<ScrollResponse<never>>(
     "POST",
     `/collections/${COLLECTION}/points/scroll`,
     body,
   );
 
   return data.result.points.map((p) => p.payload);
+}
+
+/** Scarica tutte le note con i loro vettori densi, paginando via next_page_offset. */
+export async function scrollAllWithVectors(): Promise<Array<{ note: Note; vector: number[] }>> {
+  const results: Array<{ note: Note; vector: number[] }> = [];
+  let offset: string | null = null;
+
+  while (true) {
+    const body: Record<string, unknown> = {
+      limit: 250,
+      with_payload: true,
+      with_vector: [DENSE_VECTOR_NAME],
+      ...(offset && { offset }),
+    };
+    const data = await qdrantClient.request<ScrollResponse<Record<string, number[]>>>(
+      "POST",
+      `/collections/${COLLECTION}/points/scroll`,
+      body,
+    );
+
+    for (const p of data.result.points) {
+      const vector = p.vector?.[DENSE_VECTOR_NAME];
+      if (vector) results.push({ note: p.payload, vector });
+    }
+
+    if (!data.result.next_page_offset) break;
+    offset = data.result.next_page_offset;
+  }
+
+  return results;
 }

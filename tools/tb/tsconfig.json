@@ -4,7 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022"],
-    "types": ["node"],
+    "types": ["node", "bun-types"],
     "declaration": true,
     "outDir": "./dist",
     "rootDir": "./src",
