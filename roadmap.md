@@ -97,6 +97,74 @@ Base dati già pronta (Phase 2C). Ha senso dopo aver usato Alfred abbastanza da 
 
 ---
 
+## Phase 7: Server Personale + Remote Agent
+**Status:** Pianificata
+
+Server personale self-hosted con DB centralizzati, OpenClaw come interfaccia remota via Telegram, file system personale accessibile via agente.
+
+### Architettura
+
+```
+Server
+├── container: pi-core
+│   ├── Qdrant
+│   └── SQLite (td, th, tb)
+├── container: openclaw
+│   ├── tb / td / th → puntano ai DB di pi-core
+│   ├── skills/
+│   ├── /repos/   (volume persistente — cloni repo di lavoro)
+│   └── /files/   (volume persistente — documenti e media personali)
+└── esposto: solo polling Telegram (zero porte aperte)
+```
+
+### Interfaccia Telegram
+
+Gruppo con topic separati:
+- **GTD** — recap mattutino, comandi `td`
+- **ThirdBrain** — ricerche `tb`, sedimentazione Platone
+- **Dev** — OpenClaw al lavoro sui repo, output `th run`
+- **Recap** — weekly review Seneca (lunedì mattina)
+- **Alfred** — conversazione generale
+- **Files** — richiedi e ricevi file, carica documenti
+
+### File System Personale
+
+`/files/` sul server come unica fonte di verità per documenti e media.
+Accesso via Telegram: "mandami X" → OpenClaw cerca e invia (fino a 2GB). Caricamento: mandi il file a Telegram, OpenClaw salva in `/files/`.
+Nessuna sync da gestire — tutto passa dall'agente.
+
+Repo GitHub restano su GitHub — non serve altro.
+
+### Backup (Mega + megacmd)
+
+Cron notturno su tutto il critico:
+- DB: snapshot di Qdrant + `td.db` + `th.db`
+- Config: skills, configurazione pi
+- `/files/`: documenti e media
+
+Struttura su Mega:
+```
+/pi-backup/
+├── db/          (snapshot notturni)
+├── config/      (skills, config)
+└── files/       (documenti e media)
+```
+
+Restore interattivo via Telegram: "ripristina backup di ieri" → OpenClaw scarica e ripristina.
+
+### Task
+
+- [ ] Setup server + container pi-core (Qdrant + SQLite)
+- [ ] Container OpenClaw con accesso a tb/td/th/skills
+- [ ] Gruppo Telegram con topic + bot configurato
+- [ ] Notifiche schedulate: recap mattutino e weekly review
+- [ ] Volume `/repos/`: OpenClaw su branch propri, trigger esplicito
+- [ ] Volume `/files/`: upload/download via Telegram
+- [ ] Cron backup su Mega via megacmd
+- [ ] Script restore interattivo
+
+---
+
 ## Skills Operative
 
 ### Annibale (Orchestratore) ✅

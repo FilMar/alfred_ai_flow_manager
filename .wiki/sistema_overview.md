@@ -38,7 +38,31 @@ Phase 3: Integrazione TB↔th        ✅
 Phase 4: td (Third Done)           ✅
 Phase 5: Career Coach              📋 (dopo TB ricco)
 Phase 6: Metriche per cappello     📋 (dopo uso reale)
+Phase 7: Remote Agent via Telegram 📋
 ```
+
+## Phase 7 — Server Personale + Remote Agent
+
+Server self-hosted con DB centralizzati, OpenClaw come interfaccia remota via Telegram, file system personale accessibile via agente.
+
+```
+Server
+├── container: pi-core (Qdrant + SQLite)
+├── container: openclaw
+│   ├── tb / td / th
+│   ├── skills/
+│   ├── /repos/  (cloni repo di lavoro)
+│   └── /files/  (documenti e media personali)
+└── polling Telegram — zero porte esposte
+```
+
+**Telegram**: gruppo con topic GTD, ThirdBrain, Dev, Recap, Alfred, Files.
+
+**File system personale**: `/files/` come unica fonte di verità per documenti e media. Accesso via agente — "mandami X" → Telegram. Nessuna sync da gestire.
+
+**Backup su Mega** (megacmd, cron notturno): DB snapshots, config, `/files/`. Restore interattivo via Telegram.
+
+**Repo**: restano su GitHub, OpenClaw lavora su branch propri su trigger esplicito.
 
 ## Principi di Design
 
