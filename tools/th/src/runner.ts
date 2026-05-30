@@ -2,6 +2,8 @@ import { openSync, writeSync, closeSync, writeFileSync, readFileSync, existsSync
 import { spawn, spawnSync } from "node:child_process";
 import { tmpdir, homedir } from "node:os";
 import { join, dirname, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { insertRun, finishRun } from "./db.js";
 import {
   AuthStorage,
   createAgentSession,
@@ -184,6 +186,17 @@ export async function runMember(
   const logPath = paths.log;
   const statusPath = outputPath ? paths.status : null;
 
+  const runId = randomUUID();
+  insertRun({
+    id: runId,
+    member: memberName,
+    task: task.slice(0, 300),
+    started_at: new Date().toISOString(),
+    status: "running",
+    out_path: outputPath,
+    log_path: logPath,
+  });
+
   const logFd = openSync(logPath, "w");
   const outputFd = outputPath ? openSync(outputPath, "w") : null;
 
@@ -212,6 +225,7 @@ export async function runMember(
   process.stderr.write(`log: ${logPath}\n`);
   if (outputPath) process.stderr.write(`output: ${outputPath}\n`);
 
+  let runStatus: "done" | "error" | "timeout" = "error";
   try {
     const promptPromise = session.prompt(task);
 
@@ -223,18 +237,21 @@ export async function runMember(
         await Promise.race([promptPromise, timeoutPromise]);
       } catch (err) {
         await session.abort();
+        if (err instanceof Error && err.message.startsWith("Timeout")) runStatus = "timeout";
         throw err;
       }
     } else {
       await promptPromise;
     }
 
+    runStatus = "done";
     emit("\n");
     if (statusPath) writeFileSync(statusPath, "done");
   } catch (err) {
     if (statusPath) writeFileSync(statusPath, `error: ${err instanceof Error ? err.message : String(err)}`);
     throw err;
   } finally {
+    finishRun(runId, runStatus);
     closeSync(logFd);
     if (outputFd !== null) closeSync(outputFd);
   }

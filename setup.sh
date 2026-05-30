@@ -5,6 +5,12 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE="$HOME/.claude"
 PI="$HOME/.pi/agent"
 
+# --- prereq check ---
+if ! command -v bun &>/dev/null; then
+    echo "[error] bun non trovato in PATH — installa da https://bun.sh"
+    exit 1
+fi
+
 link() {
     local src="$1" dst="$2" label="$3"
     if [[ -e "$dst" ]]; then
@@ -14,6 +20,11 @@ link() {
         echo "  [ok]   $label -> $src"
     fi
 }
+
+# --- directories ---
+mkdir -p "$HOME/.local/bin"
+mkdir -p "$PI"
+mkdir -p "$HOME/.pi"
 
 # --- identity ---
 echo "identity (alfred.md)"

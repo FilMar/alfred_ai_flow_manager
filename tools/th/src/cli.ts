@@ -2,6 +2,8 @@
 import { Command } from "commander";
 import { createMember, deleteMember, getHat, getMember, listHats, listMembers } from "./members.js";
 import { listAvailableModels, runMember, spawnDetached, tryReexecWithBwrap } from "./runner.js";
+import { getRun, listRuns } from "./db.js";
+import { existsSync, readFileSync } from "node:fs";
 
 // ─── Output helpers ───────────────────────────────────────────────────────────
 
@@ -157,6 +159,36 @@ program
     } catch (err) {
       die(errorMessage(err));
     }
+  });
+
+// ─── history ──────────────────────────────────────────────────────────────────
+
+program
+  .command("history")
+  .description("Lista run recenti")
+  .option("--member <name>", "Filtra per membro")
+  .option("--limit <n>", "Numero massimo di risultati (default: 20)", (v) => {
+    const n = parseInt(v, 10);
+    if (isNaN(n) || n <= 0) throw new Error(`--limit deve essere un intero positivo`);
+    return n;
+  })
+  .action((opts) => {
+    const runs = listRuns({ member: opts.member, limit: opts.limit });
+    if (!runs.length) die("Nessun run registrato.");
+    out(runs);
+  });
+
+program
+  .command("get <id>")
+  .description("Dettaglio di un run (output incluso se disponibile)")
+  .action((id: string) => {
+    const run = getRun(id);
+    if (!run) die(`Run non trovato: "${id}"`);
+    let output: string | null = null;
+    if (run.out_path && existsSync(run.out_path)) {
+      output = readFileSync(run.out_path, "utf8");
+    }
+    out({ ...run, output });
   });
 
 // ─── Parse ────────────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@
     "td": "./tools/td/src/cli.ts"
   },
   "scripts": {
+    "test": "bun test tests/",
     "typecheck": "tsc --project tools/tb/tsconfig.json --noEmit"
   },
   "pi": {

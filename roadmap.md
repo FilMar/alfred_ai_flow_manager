@@ -43,11 +43,11 @@ La CLI si chiama `th` (Third Hand), simmetrica a `tb`. I cappelli de Bono vivono
 - [x] **File descriptor safety**: `try/finally` garantisce la chiusura dei fd di log e output anche in caso di errore o abort.
 - [x] **Sandbox bwrap**: Ogni `th run` viene automaticamente eseguito dentro un container bwrap se disponibile. Filesystem read-only tranne `cwd`, `~/.pi` e `/tmp`. L'agente non può scrivere fuori dal progetto.
 
-### 2C — Tracking SQLite
+### 2C — Tracking SQLite ✅
 
-- [ ] **Layer dati**: SQLite via Bun. Schema: `runs`, `member_outputs`.
-- [ ] **`th history`**: Lista run passati con runId, membro, task, timestamp.
-- [ ] **`th get <runId>`**: Output completo di un run.
+- [x] **Layer dati**: SQLite via Bun (`~/.pi/th.db`). Schema: `runs` (id, member, task, started_at, finished_at, status, out_path, log_path).
+- [x] **`th history [--member <name>] [--limit <n>]`**: Lista run recenti in ordine decrescente.
+- [x] **`th get <runId>`**: Metadati + output del run se ancora disponibile su disco.
 - [ ] **Performance per membro**: metriche aggregate per cappello nel tempo (qualità output, token, durata).
 
 ---
@@ -68,25 +68,15 @@ Alfred interroga `tb search` prima di ogni flow. Platone è interattivo: propone
 CLI `td` (Third Done) con SQLite + colonna JSON per flessibilità senza migration. DB globale in `~/.pi/td.db`. Due tabelle: `projects` (id, name, start, goal_end, real_end, data) e `tasks` (id, list, project_id, done_at, created_at, data). Link tra task via array in `data.links`.
 
 - [x] CLI `td` con `add`, `inbox`, `next`, `waiting`, `someday`, `list`, `move`, `done`, `get`
+- [x] **`td edit <id>`**: Patch post-creazione di `what`, `context`, `due`, `notes`, `waiting-for`. Stringa vuota cancella il campo.
+- [x] **`td search <query>`**: Ricerca per keyword sul JSON dei task. `--all` include completati.
 - [x] Gestione progetti: `td project add/list/done`
 - [x] Symlink in `~/.local/bin/td` — setup.sh aggiornato
 - [x] Skill `taiichi` — capture, processing inbox, sessioni di lavoro, weekly review
 
 ---
 
-## Phase 5: Google Workspace (`gws`) ← prossima
-**Status:** Pianificata
-
-Layer comune basato su `gws` (Google Workspace CLI ufficiale) — un solo auth OAuth per tutti i servizi Google. Ogni skill usa `--dry-run` + conferma esplicita prima di operazioni distruttive (invia, cancella).
-
-- [ ] **Setup `gws`**: installazione + auth OAuth con keyring di sistema
-- [ ] **Skill calendario**: inserimento eventi, agenda, riorganizzazione slot, integrazione con Taiichi (*"schedula 2 ore per questo task"*)
-- [ ] **Skill Gmail**: triage inbox, risposta, inoltro — con dry-run obbligatorio prima di ogni invio
-- [ ] **Skill spese**: lettura e scrittura su Google Sheets — traccia entrate/uscite, aggregazioni mensili
-
----
-
-## Phase 6: Career Coach ← dopo TB popolato
+## Phase 5: Career Coach ← dopo TB popolato
 **Status:** Pianificata
 
 Funziona meglio quando il TB è già ricco di storia e pattern personali. Da costruire dopo uso reale del sistema.
@@ -97,27 +87,23 @@ Funziona meglio quando il TB è già ricco di storia e pattern personali. Da cos
 
 ---
 
-## Phase 7: Tracking SQLite `th` ← quando serve misurare
+## Phase 6: Metriche per cappello ← quando serve misurare
 **Status:** Pianificata
 
-Utile ma non urgente. Ha senso dopo aver usato Alfred abbastanza da voler misurare le performance per cappello.
+Base dati già pronta (Phase 2C). Ha senso dopo aver usato Alfred abbastanza da voler misurare le performance per cappello.
 
-- [ ] Layer dati: SQLite via Bun. Schema: `runs`, `member_outputs`.
-- [ ] **`th history`**: Lista run passati con runId, membro, task, timestamp.
-- [ ] **`th get <runId>`**: Output completo di un run.
-- [ ] Performance per membro: metriche aggregate per cappello nel tempo (qualità output, token, durata).
+- [ ] Metriche aggregate per membro/cappello: durata media, tasso errore, distribuzione status.
+- [ ] `th stats [--member <name>]`: report sintetico su stdout.
 
 ---
 
 ## Skills Operative
 
-### Alfred (Orchestratore) ✅
+### Annibale (Orchestratore) ✅
 
-Skill operativa che usa `th run` per orchestrare agenti con cappelli de Bono. Due pattern:
-- **Sequenziale**: ogni membro legge l'output del precedente e ci costruisce sopra
-- **Parallelo**: membri lanciati con `--detach`, poll sui file di output, poi sintetizzati dal Blu
+Orchestra agenti con cappelli de Bono via `th run`. Due pattern: sequenziale (output di uno diventa contesto del successivo) e parallelo (`--detach` + poll + sintesi). Flow ripetibili → script sh/ts. Flow predefiniti in `skills/annibale/flows/`.
 
-### Platone (Accrescitore) ✅
+### Platone (Accrescitore della Memoria) ✅
 
 Flow interattivo: propone nota (what, why, kind, tags) + connessioni trovate nel TB → utente conferma/modifica/aggiunge refs → salva. Una nota alla volta.
 
@@ -125,12 +111,32 @@ Flow interattivo: propone nota (what, why, kind, tags) + connessioni trovate nel
 
 Recupera materiale TB con query multiple, spiega a tre livelli (nucleo / meccanismi / tensioni), dichiara i gap esplicitamente. Complementare a Socrate: Feynman costruisce la comprensione, Socrate la stressa.
 
-### Taiichi (GTD) ✅
+### Socrate (Generatore di Attrito) ✅
 
-Skill operativa per il GTD personale via `td`. Quattro momenti: capture → processing inbox → sessione di lavoro → weekly review.
+Non risponde — interroga. Trova contraddizioni, lacune e assunzioni non dichiarate. Non chiude mai il ragionamento.
 
-### Emotion (Scrum PM — ClickUp) ✅
+### Aristotele (Curatore delle Sintesi) ✅
 
-Skill per gestire il lavoro da Scrum PM su ClickUp nello space Sviluppo. Sprint, backlog, inbox: crea task, aggiorna stati e custom field, approfondisce description, commenta con menzioni, collega task tra loro. Workflow sprint: move (non add to list) — i task hanno il sprint come lista primaria, a fine sprint i chiusi restano come archivio, gli aperti tornano in backlog.
+Analizza il grafo TB, trova cluster densi e connessioni mancanti, crea Hub (kind: indice) per comprimere aree sature.
+
+### Oracolo (Memoria) ✅
+
+Recupera conoscenza dal TB su un argomento. Non interpreta, non consiglia — restituisce ciò che è sedimentato.
+
+### Seneca (GTD) ✅
+
+GTD personale via `td`. Quattro momenti: capture → processing inbox → sessione di lavoro → weekly review.
+
+### Ermes (Estrattore) ✅
+
+Estrae testo da qualsiasi fonte esterna: articoli web e transcript YouTube. Un solo punto d'ingresso per tutte le fonti.
+
+### Indiana (Archeologia del Codice) ✅
+
+Scava nei progetti software per estrarre pattern strutturali nascosti, debiti tecnici, decisioni architetturali sepolte. Non corregge — diagnostica.
+
+### Prometeo (Creatore di Skill) ✅
+
+Crea nuove skill, modifica e migliora quelle esistenti, misura le performance via eval e benchmark.
 
 ---

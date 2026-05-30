@@ -3,7 +3,7 @@ import { Command } from "commander";
 import { randomUUID } from "node:crypto";
 import {
   insertProject, getProject, getProjectByName, listProjects, updateProject, taskCountByProject,
-  insertTask, getTask, listTasks, moveTask, doneTask, updateTaskData,
+  insertTask, getTask, listTasks, moveTask, doneTask, updateTaskData, searchTasks,
 } from "./db.js";
 import { LISTS, type List } from "./types.js";
 
@@ -237,6 +237,50 @@ program
       if (!t) die(`Task non trovato: "${id}"`);
       const p = t.project_id ? getProject(t.project_id) : null;
       process.stdout.write(JSON.stringify({ ...t, project: p?.name }, null, 2) + "\n");
+    } catch (e) { die(err(e)); }
+  });
+
+// ─── edit ────────────────────────────────────────────────────────────────────
+
+program
+  .command("edit <id>")
+  .description("Modifica i campi di un task (passa stringa vuota per cancellare un campo)")
+  .option("--what <text>", "Nuovo testo del task")
+  .option("--context <ctx>", "Contesto (@phone, @computer, ...)")
+  .option("--due <date>", "Scadenza (YYYY-MM-DD)")
+  .option("--notes <text>", "Note libere")
+  .option("--waiting-for <who>", "In attesa di")
+  .action((id: string, opts) => {
+    try {
+      const t = getTask(id) ?? listTasks({ includeDone: true }).find(t => t.id.startsWith(id));
+      if (!t) die(`Task non trovato: "${id}"`);
+      const data = { ...(t.data as Record<string, unknown>) };
+      if (opts.what !== undefined) { if (opts.what) data.what = opts.what; else delete data.what; }
+      if (opts.context !== undefined) { if (opts.context) data.context = opts.context; else delete data.context; }
+      if (opts.due !== undefined) { if (opts.due) data.due = opts.due; else delete data.due; }
+      if (opts.notes !== undefined) { if (opts.notes) data.notes = opts.notes; else delete data.notes; }
+      if (opts.waitingFor !== undefined) { if (opts.waitingFor) data.waiting_for = opts.waitingFor; else delete data.waiting_for; }
+      updateTaskData(t.id, data);
+      process.stdout.write(`Aggiornato: ${shortId(t.id)}\n`);
+    } catch (e) { die(err(e)); }
+  });
+
+// ─── search ──────────────────────────────────────────────────────────────────
+
+program
+  .command("search <query>")
+  .description("Cerca task per keyword")
+  .option("--all", "Includi completati")
+  .action((query: string, opts) => {
+    try {
+      const tasks = searchTasks(query, { includeDone: opts.all });
+      if (!tasks.length) { process.stdout.write("Nessun risultato.\n"); return; }
+      process.stdout.write(`\nRISULTATI (${tasks.length})\n`);
+      for (const t of tasks) {
+        const pName = t.project_id ? getProject(t.project_id)?.name : undefined;
+        printTask(t as NonNullable<typeof t>, pName);
+      }
+      process.stdout.write("\n");
     } catch (e) { die(err(e)); }
   });
 

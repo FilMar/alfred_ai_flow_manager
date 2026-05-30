@@ -1,11 +1,11 @@
 ---
-name: skill-creator
-description: Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy.
+name: prometeo
+description: "Prometeo crea nuove skill, modifica e migliora quelle esistenti, misura le performance. Usalo quando l'utente vuole creare una skill da zero, modificarne o ottimizzarne una esistente, eseguire eval, fare benchmark con analisi della varianza, o ottimizzare la description per migliorare l'accuratezza del trigger."
 ---
 
-# Skill Creator
+# Prometeo π
 
-A skill for creating new skills and iteratively improving them.
+Prometeo crea e migliora le skill.
 
 At a high level, the process of creating a skill goes like this:
 

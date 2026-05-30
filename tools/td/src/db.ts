@@ -6,13 +6,12 @@ import type { Task, Project, List } from "./types.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const DB_DIR = join(homedir(), ".pi");
-const DB_PATH = join(DB_DIR, "td.db");
+const DB_PATH = process.env.TD_DB_PATH ?? join(homedir(), ".pi", "td.db");
 
 // ─── Setup ───────────────────────────────────────────────────────────────────
 
 function open(): Database {
-  mkdirSync(DB_DIR, { recursive: true });
+  mkdirSync(join(DB_PATH, ".."), { recursive: true });
   const db = new Database(DB_PATH, { create: true });
   db.run("PRAGMA journal_mode = WAL");
   db.run("PRAGMA foreign_keys = ON");
@@ -128,6 +127,14 @@ export function doneTask(id: string): void {
 
 export function updateTaskData(id: string, data: Record<string, unknown>): void {
   db.run("UPDATE tasks SET data = ? WHERE id = ?", [JSON.stringify(data), id]);
+}
+
+export function searchTasks(query: string, opts: { includeDone?: boolean } = {}): Task[] {
+  const conditions: string[] = ["data LIKE ?"];
+  const params: unknown[] = [`%${query}%`];
+  if (!opts.includeDone) conditions.push("done_at IS NULL");
+  const where = `WHERE ${conditions.join(" AND ")}`;
+  return (db.query(`SELECT * FROM tasks ${where} ORDER BY created_at ASC`).all(...params) as Record<string, unknown>[]).map(rowToTask);
 }
 
 export function taskCountByProject(projectId: string): { active: number; done: number } {
