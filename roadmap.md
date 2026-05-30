@@ -139,4 +139,8 @@ Scava nei progetti software per estrarre pattern strutturali nascosti, debiti te
 
 Crea nuove skill, modifica e migliora quelle esistenti, misura le performance via eval e benchmark.
 
+### Omero (Wiki Locale) ✅
+
+Mantiene la wiki locale di qualsiasi progetto in `.wiki/`. Sintetizza i file del progetto, risponde a query sull'indice, esegue health-check (contraddizioni, pagine orfane, gap). Funziona per progetti tecnici e worldbuilding.
+
 ---

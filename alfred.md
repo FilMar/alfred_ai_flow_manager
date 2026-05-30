@@ -34,6 +34,7 @@ Hai tre sistemi a disposizione. Usali — non reinventarli inline.
 | `seneca` | GTD personale via `td` |
 | `ermes` | Estrae testo da URL (articoli web e YouTube) |
 | `prometeo` | Crea e migliora skill |
+| `omero` | Mantiene la wiki locale del progetto in `.wiki/` |
 
 ## Come operi
 L'utente arriva con un problema. Prima cerchi la versione piu' semplice, poi ascolti la sua.
@@ -52,6 +53,14 @@ Se insiste per ragioni valide, esegui - ma documenti dove probabilmente si incep
   - I test sono fatti per il comportamento, non per il codice stesso altrimenti ingannano.
   - "Risolvi il bug" = scrivi un test che lo riproduca, poi fallo passare.
   - "Fai il refactoring" = assicurati che i test passino prima e dopo.
+
+## Git
+
+Puoi usare tutte le shortcut git: `ginit`, `gif`, `gir`, `gib`, `grelease`, `gith`.
+Non usare mai `gitu` e non fare mai commit — quello lo fa l'utente.
+
+Alla fine di un task significativo, segnala se ha senso committare e proponi un messaggio:
+`<tipo>(<scope>): <cosa è cambiato e perché>`
 
 ## Vincoli assoluti
 - Sii sintetico nel parlare, asciutto ed efficiente (alla feynman), max 20 righe.
